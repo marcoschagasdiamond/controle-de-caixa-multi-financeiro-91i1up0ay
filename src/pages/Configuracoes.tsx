@@ -65,6 +65,12 @@ export default function ConfiguracoesPage() {
   const [planoTipo, setPlanoTipo] = useState<'receita' | 'despesa'>('despesa')
   const [savingPlano, setSavingPlano] = useState(false)
 
+  // Filtros da listagem de Contas Bancárias
+  const [filtroContaFin, setFiltroContaFin] = useState<string>('todos')
+  const [filtroContaTipo, setFiltroContaTipo] = useState<string>('todos')
+  // Filtro da listagem de Contas Fixas
+  const [filtroFixaFin, setFiltroFixaFin] = useState<string>('todos')
+
   // 4. Conta Fixa
   const [fixaFinId, setFixaFinId] = useState('')
   const [fixaDesc, setFixaDesc] = useState('')
@@ -148,6 +154,17 @@ export default function ConfiguracoesPage() {
       toast({ variant: 'destructive', title: 'Erro ao excluir', description: err.message })
     }
   }
+
+  // Listas filtradas
+  const tiposConta = ['Corrente', 'Poupança', 'Aplicação']
+  const contasFiltradas = contas.filter(
+    (c) =>
+      (filtroContaFin === 'todos' || c.financeiro_id === filtroContaFin) &&
+      (filtroContaTipo === 'todos' || c.tipo === filtroContaTipo),
+  )
+  const contasFixasFiltradas = contasFixas.filter(
+    (cf) => filtroFixaFin === 'todos' || cf.financeiro_id === filtroFixaFin,
+  )
 
   const limparFormConta = () => {
     setEditingContaId(null)
@@ -583,6 +600,52 @@ export default function ConfiguracoesPage() {
 
           {/* Lista de Contas */}
           <div className="overflow-x-auto bg-[#141A22] border border-[#232B36] rounded-xl">
+            {/* Barra de Filtros */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 border-b border-[#232B36]">
+              <div>
+                <Label className="text-[10px] text-gray-400 uppercase font-bold">Financeiro</Label>
+                <select
+                  value={filtroContaFin}
+                  onChange={(e) => setFiltroContaFin(e.target.value)}
+                  className="w-full h-8 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
+                >
+                  <option value="todos">Todos os Financeiros</option>
+                  {financeiros.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.nome} ({f.tipo})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-[10px] text-gray-400 uppercase font-bold">Tipo</Label>
+                <select
+                  value={filtroContaTipo}
+                  onChange={(e) => setFiltroContaTipo(e.target.value)}
+                  className="w-full h-8 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
+                >
+                  <option value="todos">Todos os Tipos</option>
+                  {tiposConta.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setFiltroContaFin('todos')
+                    setFiltroContaTipo('todos')
+                  }}
+                  className="w-full text-xs text-gray-400 hover:text-white h-8"
+                >
+                  Limpar Filtros
+                </Button>
+              </div>
+            </div>
             <table className="w-full text-left text-sm text-gray-300">
               <thead className="bg-[#0B0F14] border-b border-[#232B36] text-xs text-gray-400 uppercase tracking-wider font-semibold">
                 <tr>
@@ -596,7 +659,16 @@ export default function ConfiguracoesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#232B36]">
-                {contas.map((c) => {
+                {contasFiltradas.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="py-8 px-4 text-center text-sm text-gray-500">
+                      {contas.length === 0
+                        ? 'Nenhuma conta bancária cadastrada ainda.'
+                        : 'Nenhuma conta encontrada com os filtros selecionados.'}
+                    </td>
+                  </tr>
+                )}
+                {contasFiltradas.map((c) => {
                   const fin = financeiros.find((f) => f.id === c.financeiro_id)
                   return (
                     <tr key={c.id} className="hover:bg-[#1A222D]/40">
@@ -845,6 +917,34 @@ export default function ConfiguracoesPage() {
 
           {/* Listagem */}
           <div className="overflow-x-auto bg-[#141A22] border border-[#232B36] rounded-xl">
+            {/* Barra de Filtros */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 p-3 border-b border-[#232B36]">
+              <div>
+                <Label className="text-[10px] text-gray-400 uppercase font-bold">Financeiro</Label>
+                <select
+                  value={filtroFixaFin}
+                  onChange={(e) => setFiltroFixaFin(e.target.value)}
+                  className="w-full h-8 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
+                >
+                  <option value="todos">Todos os Financeiros</option>
+                  {financeiros.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.nome} ({f.tipo})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setFiltroFixaFin('todos')}
+                  className="w-full text-xs text-gray-400 hover:text-white h-8"
+                >
+                  Limpar Filtros
+                </Button>
+              </div>
+            </div>
             <table className="w-full text-left text-sm text-gray-300">
               <thead className="bg-[#0B0F14] border-b border-[#232B36] text-xs text-gray-400 uppercase tracking-wider font-semibold">
                 <tr>
@@ -857,7 +957,16 @@ export default function ConfiguracoesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#232B36]">
-                {contasFixas.map((cf) => {
+                {contasFixasFiltradas.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
+                      {contasFixas.length === 0
+                        ? 'Nenhuma conta fixa cadastrada ainda.'
+                        : 'Nenhuma conta fixa encontrada com os filtros selecionados.'}
+                    </td>
+                  </tr>
+                )}
+                {contasFixasFiltradas.map((cf) => {
                   const fin = financeiros.find((f) => f.id === cf.financeiro_id)
                   return (
                     <tr key={cf.id} className="hover:bg-[#1A222D]/40">
