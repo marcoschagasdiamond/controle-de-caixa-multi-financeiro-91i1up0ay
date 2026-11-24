@@ -80,6 +80,14 @@ export const FinanceiroService = {
     return data as ContaBancaria
   },
 
+  async updateConta(
+    id: string,
+    payload: Partial<Omit<ContaBancaria, 'id' | 'user_id' | 'created_at' | 'updated_at'>>,
+  ): Promise<void> {
+    const { error } = await supabase.from('contas').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
   async deleteConta(id: string): Promise<void> {
     const { error } = await supabase.from('contas').delete().eq('id', id)
     if (error) throw error

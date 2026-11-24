@@ -56,6 +56,7 @@ export default function ConfiguracoesPage() {
   const [ctaPix, setCtaPix] = useState('')
   const [ctaSaldoInicial, setCtaSaldoInicial] = useState('0')
   const [savingCta, setSavingCta] = useState(false)
+  const [editingContaId, setEditingContaId] = useState<string | null>(null)
 
   // 3. Plano de Contas
   const [planoFinId, setPlanoFinId] = useState('')
@@ -148,30 +149,63 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  const handleCriarConta = async (e: React.FormEvent) => {
+  const limparFormConta = () => {
+    setEditingContaId(null)
+    setCtaBanco('')
+    setCtaAgencia('')
+    setCtaConta('')
+    setCtaPix('')
+    setCtaSaldoInicial('0')
+  }
+
+  const iniciarEdicaoConta = (c: ContaBancaria) => {
+    setEditingContaId(c.id)
+    setCtaFinId(c.financeiro_id)
+    setCtaBanco(c.banco)
+    setCtaAgencia(c.agencia || '')
+    setCtaConta(c.conta)
+    setCtaTipo(c.tipo)
+    setCtaPix(c.pix || '')
+    setCtaSaldoInicial(String(c.saldo_inicial ?? 0))
+  }
+
+  const handleSalvarConta = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!ctaFinId || !ctaBanco.trim() || !ctaConta.trim()) return
     try {
       setSavingCta(true)
-      await FinanceiroService.createConta({
-        financeiro_id: ctaFinId,
-        banco: ctaBanco.trim(),
-        agencia: ctaAgencia.trim() || null,
-        conta: ctaConta.trim(),
-        tipo: ctaTipo,
-        pix: ctaPix.trim() || null,
-        saldo_inicial: parseFloat(ctaSaldoInicial) || 0,
-        ativo: true,
-      })
-      toast({ title: 'Conta bancária cadastrada com segregação!' })
-      setCtaBanco('')
-      setCtaAgencia('')
-      setCtaConta('')
-      setCtaPix('')
-      setCtaSaldoInicial('0')
+      if (editingContaId) {
+        await FinanceiroService.updateConta(editingContaId, {
+          financeiro_id: ctaFinId,
+          banco: ctaBanco.trim(),
+          agencia: ctaAgencia.trim() || null,
+          conta: ctaConta.trim(),
+          tipo: ctaTipo,
+          pix: ctaPix.trim() || null,
+          saldo_inicial: parseFloat(ctaSaldoInicial) || 0,
+        })
+        toast({ title: 'Conta bancária atualizada com sucesso!' })
+      } else {
+        await FinanceiroService.createConta({
+          financeiro_id: ctaFinId,
+          banco: ctaBanco.trim(),
+          agencia: ctaAgencia.trim() || null,
+          conta: ctaConta.trim(),
+          tipo: ctaTipo,
+          pix: ctaPix.trim() || null,
+          saldo_inicial: parseFloat(ctaSaldoInicial) || 0,
+          ativo: true,
+        })
+        toast({ title: 'Conta bancária cadastrada com segregação!' })
+      }
+      limparFormConta()
       await carregarTudo()
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Erro ao criar conta', description: err.message })
+      toast({
+        variant: 'destructive',
+        title: editingContaId ? 'Erro ao atualizar conta' : 'Erro ao criar conta',
+        description: err.message,
+      })
     } finally {
       setSavingCta(false)
     }
@@ -436,11 +470,11 @@ export default function ConfiguracoesPage() {
             <CardHeader className="pb-3 border-b border-[#232B36]">
               <CardTitle className="text-base text-white flex items-center gap-2">
                 <Wallet className="w-4 h-4 text-[#00D68F]" />
-                Adicionar Conta Bancária Segregada
+                {editingContaId ? 'Editar Conta Bancária' : 'Adicionar Conta Bancária Segregada'}
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4">
-              <form onSubmit={handleCriarConta} className="space-y-4">
+              <form onSubmit={handleSalvarConta} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <Label className="text-xs text-gray-400">Financeiro Dono da Conta *</Label>
@@ -503,6 +537,16 @@ export default function ConfiguracoesPage() {
                   </div>
 
                   <div>
+                    <Label className="text-xs text-gray-400">PIX</Label>
+                    <Input
+                      value={ctaPix}
+                      onChange={(e) => setCtaPix(e.target.value)}
+                      placeholder="Chave Pix, telefone, e-mail ou aleatória"
+                      className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
+                    />
+                  </div>
+
+                  <div>
                     <Label className="text-xs text-gray-400">Saldo Inicial (R$)</Label>
                     <Input
                       type="number"
@@ -514,13 +558,23 @@ export default function ConfiguracoesPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end pt-2">
+                <div className="flex justify-end gap-2 pt-2">
+                  {editingContaId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={limparFormConta}
+                      className="border-[#232B36] text-gray-300 hover:text-white text-xs h-9 cursor-pointer"
+                    >
+                      Cancelar edição
+                    </Button>
+                  )}
                   <Button
                     type="submit"
                     disabled={savingCta}
                     className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold text-xs h-9 cursor-pointer"
                   >
-                    Salvar Conta Bancária
+                    {editingContaId ? 'Atualizar Conta Bancária' : 'Salvar Conta Bancária'}
                   </Button>
                 </div>
               </form>
@@ -536,6 +590,7 @@ export default function ConfiguracoesPage() {
                   <th className="py-3 px-4">Banco</th>
                   <th className="py-3 px-4">Agência / Conta</th>
                   <th className="py-3 px-4">Tipo</th>
+                  <th className="py-3 px-4">PIX</th>
                   <th className="py-3 px-4 text-right">Saldo Inicial</th>
                   <th className="py-3 px-4 text-center">Ações</th>
                 </tr>
@@ -551,10 +606,18 @@ export default function ConfiguracoesPage() {
                         Ag: {c.agencia || 'S/A'} - C/C: {c.conta}
                       </td>
                       <td className="py-3 px-4 text-xs">{c.tipo}</td>
+                      <td className="py-3 px-4 text-xs font-mono text-gray-400">{c.pix || '-'}</td>
                       <td className="py-3 px-4 text-right font-mono text-white font-bold">
                         {formatCurrency(c.saldo_inicial)}
                       </td>
                       <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => iniciarEdicaoConta(c)}
+                          title="Editar conta"
+                          className="p-1 text-gray-500 hover:text-[#00D68F] cursor-pointer mr-1"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => handleExcluirConta(c.id)}
                           className="p-1 text-gray-500 hover:text-[#FF5C5C] cursor-pointer"
