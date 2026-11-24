@@ -105,6 +105,7 @@ export default function ConfiguracoesPage() {
   const [planoDesc, setPlanoDesc] = useState('')
   const [planoTipo, setPlanoTipo] = useState<'receita' | 'despesa'>('despesa')
   const [savingPlano, setSavingPlano] = useState(false)
+  const [editingPlanoId, setEditingPlanoId] = useState<string | null>(null)
 
   // Filtros da listagem de Contas Bancárias (persistidos no navegador)
   const [filtroContaFin, setFiltroContaFin] = useState<string>(() =>
@@ -318,23 +319,49 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  const handleCriarPlano = async (e: React.FormEvent) => {
+  const limparFormPlano = () => {
+    setEditingPlanoId(null)
+    setPlanoCodigo('')
+    setPlanoDesc('')
+    setPlanoTipo('despesa')
+  }
+
+  const iniciarEdicaoPlano = (p: PlanoConta) => {
+    setEditingPlanoId(p.id)
+    setPlanoCodigo(p.codigo)
+    setPlanoDesc(p.descricao)
+    setPlanoTipo(p.tipo)
+  }
+
+  const handleSalvarPlano = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!planoCodigo.trim() || !planoDesc.trim()) return
     try {
       setSavingPlano(true)
-      await FinanceiroService.createPlanoConta({
-        codigo: planoCodigo.trim(),
-        descricao: planoDesc.trim(),
-        tipo: planoTipo,
-        ativo: true,
-      })
-      toast({ title: 'Categoria adicionada ao Plano de Contas Global!' })
-      setPlanoCodigo('')
-      setPlanoDesc('')
+      if (editingPlanoId) {
+        await FinanceiroService.updatePlanoConta(editingPlanoId, {
+          codigo: planoCodigo.trim(),
+          descricao: planoDesc.trim(),
+          tipo: planoTipo,
+        })
+        toast({ title: 'Categoria atualizada com sucesso!' })
+      } else {
+        await FinanceiroService.createPlanoConta({
+          codigo: planoCodigo.trim(),
+          descricao: planoDesc.trim(),
+          tipo: planoTipo,
+          ativo: true,
+        })
+        toast({ title: 'Categoria adicionada ao Plano de Contas Global!' })
+      }
+      limparFormPlano()
       await carregarTudo()
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Erro ao criar categoria', description: err.message })
+      toast({
+        variant: 'destructive',
+        title: editingPlanoId ? 'Erro ao atualizar categoria' : 'Erro ao criar categoria',
+        description: err.message,
+      })
     } finally {
       setSavingPlano(false)
     }
@@ -973,11 +1000,13 @@ export default function ConfiguracoesPage() {
             <CardHeader className="pb-3 border-b border-[#232B36]">
               <CardTitle className="text-base text-white flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-[#00D68F]" />
-                Nova Categoria no Plano de Contas
+                {editingPlanoId
+                  ? 'Editar Categoria do Plano de Contas'
+                  : 'Nova Categoria no Plano de Contas'}
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4">
-              <form onSubmit={handleCriarPlano} className="space-y-4">
+              <form onSubmit={handleSalvarPlano} className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <Label className="text-xs text-gray-400">Código Contábil</Label>
@@ -1014,13 +1043,23 @@ export default function ConfiguracoesPage() {
                   </div>
                 </div>
 
-                <div className="flex justify-end pt-2">
+                <div className="flex justify-end gap-2 pt-2">
+                  {editingPlanoId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={limparFormPlano}
+                      className="border-[#232B36] text-gray-300 hover:text-white text-xs h-9 cursor-pointer"
+                    >
+                      Cancelar edição
+                    </Button>
+                  )}
                   <Button
                     type="submit"
                     disabled={savingPlano}
                     className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold text-xs h-9 cursor-pointer"
                   >
-                    Salvar Categoria
+                    {editingPlanoId ? 'Atualizar Categoria' : 'Salvar Categoria'}
                   </Button>
                 </div>
               </form>
@@ -1058,7 +1097,15 @@ export default function ConfiguracoesPage() {
                       </td>
                       <td className="py-2.5 px-4 text-center">
                         <button
+                          onClick={() => iniciarEdicaoPlano(p)}
+                          title="Editar categoria"
+                          className="p-1 text-gray-500 hover:text-[#00D68F] cursor-pointer mr-1"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
                           onClick={() => handleExcluirPlano(p.id)}
+                          title="Excluir categoria"
                           className="p-1 text-gray-500 hover:text-[#FF5C5C] cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />

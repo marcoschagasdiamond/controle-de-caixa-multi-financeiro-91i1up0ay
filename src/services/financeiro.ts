@@ -119,6 +119,11 @@ export const FinanceiroService = {
     return data as PlanoConta
   },
 
+  async updatePlanoConta(id: string, payload: Partial<PlanoConta>): Promise<void> {
+    const { error } = await supabase.from('plano_contas').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
   async deletePlanoConta(id: string): Promise<void> {
     const { error } = await supabase.from('plano_contas').delete().eq('id', id)
     if (error) throw error
