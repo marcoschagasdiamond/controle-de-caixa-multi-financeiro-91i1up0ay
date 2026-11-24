@@ -237,7 +237,7 @@ export default function Layout() {
           aria-label="Fechar menu lateral"
           onClick={() => setSidebarOpen(false)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === 'Escape') setSidebarOpen(false);
+            if (e.key === 'Enter' || e.key === 'Escape') setSidebarOpen(false)
           }}
           className="fixed inset-0 bg-black/60 z-20 md:hidden backdrop-blur-xs"
         />

@@ -20,6 +20,15 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
+// Interface para as linhas da tabela de Budget
+interface LinhaBudgetItem {
+  plano: PlanoConta
+  orcado: number
+  realizado: number
+  variacaoR$: number
+  percentual: number
+}
+
 export default function BudgetPage() {
   const { toast } = useToast()
   const [financeiros, setFinanceiros] = useState<Financeiro[]>([])
@@ -329,12 +338,14 @@ export default function BudgetPage() {
                               <Input
                                 type="text"
                                 autoFocus
+                                aria-label="Editar valor do orçamento"
                                 value={editValue}
                                 onChange={(e) => setEditValue(e.target.value)}
                                 className="w-24 h-7 text-right bg-[#0B0F14] border-[#00D68F] text-xs font-mono text-white p-1"
                               />
                               <Button
                                 size="icon"
+                                aria-label="Confirmar novo orçamento"
                                 disabled={savingCell}
                                 onClick={() => handleSaveCell(linha.plano.id)}
                                 className="h-7 w-7 bg-[#00D68F] text-[#0B0F14] hover:bg-[#00B97A]"
@@ -351,11 +362,13 @@ export default function BudgetPage() {
                               type="button"
                               aria-label={`Editar valor orçado de ${linha.plano.descricao}`}
                               onClick={() => {
-                                setEditingPlanoId(linha.plano.id);
-                                setEditValue(String(linha.orcado || '0'));
+                                setEditingPlanoId(linha.plano.id)
+                                setEditValue(String(linha.orcado || '0'))
                               }}
                               className="group flex items-center justify-end gap-1.5 w-full hover:text-[#00D68F] transition-colors cursor-pointer"
-                            >                              <span className="font-semibold text-white">
+                            >
+                              {' '}
+                              <span className="font-semibold text-white">
                                 {formatCurrency(linha.orcado)}
                               </span>
                               <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-gray-400" />
@@ -386,7 +399,14 @@ export default function BudgetPage() {
                               {linha.orcado > 0 ? 'do teto' : 'sem teto'}
                             </span>
                           </div>
-                          <div className="w-full bg-[#0B0F14] h-2 rounded-full overflow-hidden">
+                          <div
+                            role="progressbar"
+                            aria-label={`Execução orçamentária de ${linha.plano.descricao}: ${pct.toFixed(0)}%`}
+                            aria-valuenow={Math.round(pct)}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            className="w-full bg-[#0B0F14] h-2 rounded-full overflow-hidden"
+                          >
                             <div
                               className={`h-full ${getBarColor(pct)} transition-all duration-300`}
                               style={{ width: `${Math.min(pct, 100)}%` }}

@@ -800,7 +800,9 @@ export default function Onboarding() {
                   <span className="w-20">Código</span>
                   <span className="flex-1 px-3">Descrição da Categoria</span>
                   <span className="w-28 text-center">Tipo</span>
-                  <span className="w-10"><span className="sr-only">Ações</span></span>
+                  <span className="w-10">
+                    <span className="sr-only">Ações</span>
+                  </span>
                 </div>
 
                 <div className="max-h-72 overflow-y-auto space-y-2 pr-1">

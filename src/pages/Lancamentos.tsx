@@ -533,7 +533,9 @@ export default function LancamentosPage() {
 
               {/* Status (Previsto / Realizado) */}
               <div className="space-y-1">
-                <Label htmlFor="statusSelect" className="text-xs text-gray-400 font-medium">Status</Label>
+                <Label htmlFor="statusSelect" className="text-xs text-gray-400 font-medium">
+                  Status
+                </Label>
                 <select
                   id="statusSelect"
                   aria-label="Status do lançamento"
