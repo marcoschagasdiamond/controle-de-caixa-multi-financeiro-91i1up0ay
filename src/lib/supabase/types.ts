@@ -684,6 +684,33 @@ export type Database = {
           },
         ]
       }
+      grupos_plano_contas: {
+        Row: {
+          created_at: string
+          id: string
+          nome: string
+          ordem: number
+          tipo: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nome: string
+          ordem?: number
+          tipo: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nome?: string
+          ordem?: number
+          tipo?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       plano_contas: {
         Row: {
           ativo: boolean
@@ -691,6 +718,7 @@ export type Database = {
           created_at: string
           descricao: string
           financeiro_id: string | null
+          grupo_id: string | null
           id: string
           tipo: string
           user_id: string
@@ -701,6 +729,7 @@ export type Database = {
           created_at?: string
           descricao: string
           financeiro_id?: string | null
+          grupo_id?: string | null
           id?: string
           tipo: string
           user_id: string
@@ -711,6 +740,7 @@ export type Database = {
           created_at?: string
           descricao?: string
           financeiro_id?: string | null
+          grupo_id?: string | null
           id?: string
           tipo?: string
           user_id?: string

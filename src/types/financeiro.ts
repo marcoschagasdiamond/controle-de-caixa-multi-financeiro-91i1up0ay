@@ -33,6 +33,19 @@ export interface PlanoConta {
   descricao: string
   tipo: 'receita' | 'despesa'
   ativo: boolean
+  grupo_id?: string | null
+  created_at?: string
+}
+
+// Grupo hierárquico REAL do plano de contas (tabela grupos_plano_contas).
+// Agrupa categorias do mesmo tipo (receita ou despesa); o usuário pode
+// mover categorias entre grupos livremente — o código não define mais o grupo.
+export interface PlanoGrupo {
+  id: string
+  user_id: string
+  nome: string
+  tipo: 'receita' | 'despesa'
+  ordem: number
   created_at?: string
 }
 

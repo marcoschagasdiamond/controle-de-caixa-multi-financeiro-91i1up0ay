@@ -3,6 +3,7 @@ import {
   Financeiro,
   ContaBancaria,
   PlanoConta,
+  PlanoGrupo,
   ContaFixa,
   Lancamento,
   Importacao,
@@ -568,5 +569,55 @@ export const FinanceiroService = {
     const { data, error } = await (supabase.from('vw_fechamento_financeiro') as any).select('*')
     if (error) throw error
     return (data as FechamentoFinanceiroView[]) || []
+  },
+
+  // ===== GRUPOS DO PLANO DE CONTAS (hierarquia REAL, tabela grupos_plano_contas) =====
+
+  // Grupos do usuário, ordenados (receitas e despesas juntos; a UI separa por tipo)
+  async getPlanoGrupos(): Promise<PlanoGrupo[]> {
+    const { data, error } = await supabase
+      .from('grupos_plano_contas')
+      .select('*')
+      .order('ordem', { ascending: true })
+      .order('nome', { ascending: true })
+    if (error) throw error
+    return (data as PlanoGrupo[]) || []
+  },
+
+  async createPlanoGrupo(
+    payload: Omit<PlanoGrupo, 'id' | 'user_id' | 'created_at'>,
+  ): Promise<PlanoGrupo> {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) throw new Error('Usuário não autenticado')
+    const { data, error } = await supabase
+      .from('grupos_plano_contas')
+      .insert({ ...payload, user_id: user.id })
+      .select()
+      .single()
+    if (error) throw error
+    return data as PlanoGrupo
+  },
+
+  async updatePlanoGrupo(id: string, payload: Partial<PlanoGrupo>): Promise<void> {
+    const { error } = await supabase.from('grupos_plano_contas').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  async deletePlanoGrupo(id: string): Promise<void> {
+    const { error } = await supabase.from('grupos_plano_contas').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  // Mover categoria(s) para outro grupo (mesmo tipo é validado na UI; o RPC
+  // mover_categoria_para_grupo valida e normaliza no servidor)
+  async moverCategoriaParaGrupo(planoContaId: string, grupoId: string | null): Promise<void> {
+    const { data, error } = await supabase.rpc('mover_categoria_para_grupo', {
+      p_plano_conta_id: planoContaId,
+      p_grupo_id: grupoId,
+    })
+    if (error) throw error
+    return (data as any) ?? undefined
   },
 }
