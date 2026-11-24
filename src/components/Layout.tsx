@@ -76,7 +76,7 @@ export default function Layout() {
   ]
 
   return (
-    <div className="min-h-screen bg-[#0B0F14] text-[#F1F5F9] flex flex-col md:flex-row antialiased">
+    <div className="min-h-screen md:h-screen md:overflow-hidden bg-[#0B0F14] text-[#F1F5F9] flex flex-col md:flex-row antialiased">
       {/* Top bar mobile */}
       <header className="md:hidden flex items-center justify-between px-4 py-3 bg-[#141A22] border-b border-[#232B36] sticky top-0 z-40">
         <div className="flex items-center gap-2">
@@ -99,7 +99,7 @@ export default function Layout() {
 
       {/* Sidebar Desktop e Mobile */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 w-64 bg-[#141A22] border-r border-[#232B36] flex flex-col transform transition-transform duration-200 ease-in-out md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-30 w-64 bg-[#141A22] border-r border-[#232B36] flex flex-col transform transition-transform duration-200 ease-in-out md:static md:inset-auto md:h-screen md:translate-x-0 md:sticky md:top-0 ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -244,7 +244,7 @@ export default function Layout() {
       )}
 
       {/* Conteúdo Principal */}
-      <main className="flex-1 min-w-0 overflow-y-auto">
+      <main className="flex-1 min-w-0 overflow-y-auto md:h-screen">
         <div className="p-4 md:p-8 max-w-7xl mx-auto w-full">
           <Outlet context={{ reloadFinanceiros: loadFinanceiros }} />
         </div>
