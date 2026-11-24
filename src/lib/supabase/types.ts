@@ -459,6 +459,86 @@ export type Database = {
           },
         ]
       }
+      lancamentos_recorrentes: {
+        Row: {
+          ativo: boolean
+          conta_id: string
+          created_at: string
+          data_inicial: string
+          descricao: string
+          dia_mes: number
+          financeiro_id: string
+          id: string
+          plano_conta_id: string
+          status: string
+          tipo: string
+          updated_at: string
+          user_id: string
+          valor: number
+        }
+        Insert: {
+          ativo?: boolean
+          conta_id: string
+          created_at?: string
+          data_inicial: string
+          descricao: string
+          dia_mes: number
+          financeiro_id: string
+          id?: string
+          plano_conta_id: string
+          status?: string
+          tipo: string
+          updated_at?: string
+          user_id: string
+          valor: number
+        }
+        Update: {
+          ativo?: boolean
+          conta_id?: string
+          created_at?: string
+          data_inicial?: string
+          descricao?: string
+          dia_mes?: number
+          financeiro_id?: string
+          id?: string
+          plano_conta_id?: string
+          status?: string
+          tipo?: string
+          updated_at?: string
+          user_id?: string
+          valor?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'lancamentos_recorrentes_conta_id_fkey'
+            columns: ['conta_id']
+            isOneToOne: false
+            referencedRelation: 'contas'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'lancamentos_recorrentes_financeiro_id_fkey'
+            columns: ['financeiro_id']
+            isOneToOne: false
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'lancamentos_recorrentes_financeiro_id_fkey'
+            columns: ['financeiro_id']
+            isOneToOne: false
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
+          },
+          {
+            foreignKeyName: 'lancamentos_recorrentes_plano_conta_id_fkey'
+            columns: ['plano_conta_id']
+            isOneToOne: false
+            referencedRelation: 'plano_contas'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       mutuos: {
         Row: {
           created_at: string

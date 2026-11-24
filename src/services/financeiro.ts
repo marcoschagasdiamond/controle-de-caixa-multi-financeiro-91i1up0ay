@@ -183,8 +183,7 @@ export const FinanceiroService = {
 
   // Lançamentos recorrentes mensais
   async getLancamentosRecorrentes(financeiroId?: string): Promise<LancamentoRecorrente[]> {
-    let query = supabase
-      .from('lancamentos_recorrentes')
+    let query = (supabase.from('lancamentos_recorrentes') as any)
       .select('*')
       .order('dia_mes', { ascending: true })
     if (financeiroId) {
@@ -214,12 +213,14 @@ export const FinanceiroService = {
     id: string,
     payload: Partial<Omit<LancamentoRecorrente, 'id' | 'user_id' | 'created_at' | 'updated_at'>>,
   ): Promise<void> {
-    const { error } = await supabase.from('lancamentos_recorrentes').update(payload).eq('id', id)
+    const { error } = await (supabase.from('lancamentos_recorrentes') as any)
+      .update(payload)
+      .eq('id', id)
     if (error) throw error
   },
 
   async deleteLancamentoRecorrente(id: string): Promise<void> {
-    const { error } = await supabase.from('lancamentos_recorrentes').delete().eq('id', id)
+    const { error } = await (supabase.from('lancamentos_recorrentes') as any).delete().eq('id', id)
     if (error) throw error
   },
 
