@@ -6,6 +6,7 @@ import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { AlertaContasFixas } from '@/components/AlertaContasFixas'
 import {
   DollarSign,
   ArrowUpRight,
@@ -360,6 +361,15 @@ export default function Index() {
           </button>
         </Card>
       </div>
+
+      {/* ALERTA DIÁRIO: Contas fixas vencidas e vencendo nos próximos 7 dias */}
+      <AlertaContasFixas
+        contasFixas={contasFixas}
+        financeiros={financeiros}
+        lancamentos={lancamentos}
+        financeiroIdFiltro={selectedFinId}
+        onPagamentoRegistrado={carregarPainel}
+      />
 
       {/* GRÁFICO DE 6 MESES: Entradas vs Saídas */}
       <Card className="bg-[#141A22] border-[#232B36] text-white p-6 shadow-xl">
