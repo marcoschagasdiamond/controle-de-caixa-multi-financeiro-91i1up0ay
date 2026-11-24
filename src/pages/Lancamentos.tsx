@@ -1275,7 +1275,11 @@ export default function LancamentosPage() {
       />
 
       {/* RECEBÍVEIS SEM DATA: contratos a receber sem data definida, fora da projeção */}
-      <RecebiveisSemData financeiros={financeiros} planos={planos} />
+      <RecebiveisSemData
+        financeiros={financeiros}
+        planos={planos}
+        financeiroPadraoId={filtroFin !== 'todos' ? filtroFin : undefined}
+      />
     </div>
   )
 }

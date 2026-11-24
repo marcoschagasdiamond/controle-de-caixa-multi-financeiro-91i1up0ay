@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { DialogoConverterRecebivel } from '@/components/DialogoConverterRecebivel'
+import { DialogoImportarRecebiveis } from '@/components/DialogoImportarRecebiveis'
 import {
   Inbox,
   PlusCircle,
@@ -20,6 +21,7 @@ import {
   FileSignature,
   MoreHorizontal,
   Loader2,
+  FileSpreadsheet,
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react'
@@ -48,11 +50,13 @@ export const iconeGatilho = (r: RecebivelSemData) =>
 interface Props {
   financeiros: Financeiro[]
   planos: PlanoConta[]
+  // Financeiro padrão para linhas sem coluna de financeiro (filtro da tela)
+  financeiroPadraoId?: string
 }
 
 // Seção "Recebíveis sem Data (Contratos a Receber)" dentro de Lançamentos.
 // Cadastro sem data; os recebíveis pendentes NÃO entram na projeção de caixa.
-export function RecebiveisSemData({ financeiros, planos }: Props) {
+export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: Props) {
   const { toast } = useToast()
 
   const [recebiveis, setRecebiveis] = useState<RecebivelSemData[]>([])
@@ -75,6 +79,8 @@ export function RecebiveisSemData({ financeiros, planos }: Props) {
   // Conversão
   const [convertendo, setConvertendo] = useState<RecebivelSemData | null>(null)
 
+  // Importação CSV
+  const [importOpen, setImportOpen] = useState(false)
   // Pré-seleciona o primeiro financeiro acessível
   useEffect(() => {
     if (financeiros.length > 0 && !selectedFinId) setSelectedFinId(financeiros[0].id)
@@ -183,6 +189,11 @@ export function RecebiveisSemData({ financeiros, planos }: Props) {
   const recebiveisConvertidos = recebiveis.filter((r) => r.status === 'convertido')
   const totalPendente = recebiveisPendentes.reduce((acc, r) => acc + Number(r.valor_total), 0)
 
+  const finPadrao =
+    financeiroPadraoId && financeiroPadraoId !== 'todos'
+      ? financeiroPadraoId
+      : selectedFinId || (financeiros[0]?.id ?? '')
+
   return (
     <div id="recebiveis-sem-data" className="space-y-6 scroll-mt-24">
       {/* CADASTRO */}
@@ -196,6 +207,16 @@ export function RecebiveisSemData({ financeiros, planos }: Props) {
             <span className="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">
               Fora da projeção de caixa
             </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setImportOpen(true)}
+              className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+              Importar CSV
+            </Button>
           </div>
         </CardHeader>
         <CardContent className="pt-6">
@@ -530,6 +551,16 @@ export function RecebiveisSemData({ financeiros, planos }: Props) {
         planos={planos}
         onClose={() => setConvertendo(null)}
         onConvertido={carregar}
+      />
+
+      {/* DIÁLOGO DE IMPORTAÇÃO CSV */}
+      <DialogoImportarRecebiveis
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        financeiros={financeiros}
+        planos={planos}
+        financeiroPadraoId={finPadrao}
+        onImportado={carregar}
       />
     </div>
   )

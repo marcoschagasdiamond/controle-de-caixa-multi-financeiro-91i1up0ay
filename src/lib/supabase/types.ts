@@ -769,58 +769,6 @@ export type Database = {
           },
         ]
       }
-      regras_conciliacao: {
-        Row: {
-          created_at: string
-          financeiro_id: string
-          id: string
-          padrao_texto: string
-          plano_conta_id: string | null
-          tipo: string | null
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          financeiro_id: string
-          id?: string
-          padrao_texto: string
-          plano_conta_id?: string | null
-          tipo?: string | null
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          financeiro_id?: string
-          id?: string
-          padrao_texto?: string
-          plano_conta_id?: string | null
-          tipo?: string | null
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: 'regras_conciliacao_financeiro_id_fkey'
-            columns: ['financeiro_id']
-            isOneToOne: false
-            referencedRelation: 'financeiros'
-            referencedColumns: ['id']
-          },
-          {
-            foreignKeyName: 'regras_conciliacao_financeiro_id_fkey'
-            columns: ['financeiro_id']
-            isOneToOne: false
-            referencedRelation: 'vw_fechamento_financeiro'
-            referencedColumns: ['financeiro_id']
-          },
-          {
-            foreignKeyName: 'regras_conciliacao_plano_conta_id_fkey'
-            columns: ['plano_conta_id']
-            isOneToOne: false
-            referencedRelation: 'plano_contas'
-            referencedColumns: ['id']
-          },
-        ]
-      }
       recebiveis_sem_data: {
         Row: {
           contratante: string | null
@@ -850,7 +798,7 @@ export type Database = {
           observacao?: string | null
           plano_conta_id?: string | null
           status?: string
-          status_gatilho: string
+          status_gatilho?: string
           total_parcelas?: number | null
           updated_at?: string
           user_id: string
@@ -897,6 +845,58 @@ export type Database = {
           },
           {
             foreignKeyName: 'recebiveis_sem_data_plano_conta_id_fkey'
+            columns: ['plano_conta_id']
+            isOneToOne: false
+            referencedRelation: 'plano_contas'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      regras_conciliacao: {
+        Row: {
+          created_at: string
+          financeiro_id: string
+          id: string
+          padrao_texto: string
+          plano_conta_id: string | null
+          tipo: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          financeiro_id: string
+          id?: string
+          padrao_texto: string
+          plano_conta_id?: string | null
+          tipo?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          financeiro_id?: string
+          id?: string
+          padrao_texto?: string
+          plano_conta_id?: string | null
+          tipo?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'regras_conciliacao_financeiro_id_fkey'
+            columns: ['financeiro_id']
+            isOneToOne: false
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'regras_conciliacao_financeiro_id_fkey'
+            columns: ['financeiro_id']
+            isOneToOne: false
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
+          },
+          {
+            foreignKeyName: 'regras_conciliacao_plano_conta_id_fkey'
             columns: ['plano_conta_id']
             isOneToOne: false
             referencedRelation: 'plano_contas'
