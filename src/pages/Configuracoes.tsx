@@ -22,8 +22,24 @@ import {
   AlertTriangle,
   Loader2,
   ShieldCheck,
+  Download,
+  BarChart3,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import RelatorioContas from '@/components/RelatorioContas'
+
+// Chaves de persistência dos filtros no navegador
+const LS_FILTRO_CONTA_FIN = 'ccmf_filtro_conta_financeiro'
+const LS_FILTRO_CONTA_TIPO = 'ccmf_filtro_conta_tipo'
+const LS_FILTRO_FIXA_FIN = 'ccmf_filtro_fixa_financeiro'
+
+function lerFiltroSalvo(chave: string): string {
+  try {
+    return window.localStorage.getItem(chave) || 'todos'
+  } catch {
+    return 'todos'
+  }
+}
 
 export default function ConfiguracoesPage() {
   const { toast } = useToast()
@@ -65,11 +81,28 @@ export default function ConfiguracoesPage() {
   const [planoTipo, setPlanoTipo] = useState<'receita' | 'despesa'>('despesa')
   const [savingPlano, setSavingPlano] = useState(false)
 
-  // Filtros da listagem de Contas Bancárias
-  const [filtroContaFin, setFiltroContaFin] = useState<string>('todos')
-  const [filtroContaTipo, setFiltroContaTipo] = useState<string>('todos')
-  // Filtro da listagem de Contas Fixas
-  const [filtroFixaFin, setFiltroFixaFin] = useState<string>('todos')
+  // Filtros da listagem de Contas Bancárias (persistidos no navegador)
+  const [filtroContaFin, setFiltroContaFin] = useState<string>(() =>
+    lerFiltroSalvo(LS_FILTRO_CONTA_FIN),
+  )
+  const [filtroContaTipo, setFiltroContaTipo] = useState<string>(() =>
+    lerFiltroSalvo(LS_FILTRO_CONTA_TIPO),
+  )
+  // Filtro da listagem de Contas Fixas (persistido no navegador)
+  const [filtroFixaFin, setFiltroFixaFin] = useState<string>(() =>
+    lerFiltroSalvo(LS_FILTRO_FIXA_FIN),
+  )
+
+  // Grava cada filtro no localStorage ao mudar
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(LS_FILTRO_CONTA_FIN, filtroContaFin)
+      window.localStorage.setItem(LS_FILTRO_CONTA_TIPO, filtroContaTipo)
+      window.localStorage.setItem(LS_FILTRO_FIXA_FIN, filtroFixaFin)
+    } catch {
+      /* localStorage indisponível: filtros seguem em memória */
+    }
+  }, [filtroContaFin, filtroContaTipo, filtroFixaFin])
 
   // 4. Conta Fixa
   const [fixaFinId, setFixaFinId] = useState('')
@@ -308,6 +341,58 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  // Exporta as contas visíveis (respeitando filtros) em CSV pt-BR (BOM + separador ';')
+  const handleExportarContasCSV = () => {
+    if (contasFiltradas.length === 0) {
+      toast({ title: 'Nenhuma conta para exportar com os filtros atuais.' })
+      return
+    }
+    const esc = (v: string | number | null | undefined) => {
+      const s = v == null ? '' : String(v)
+      return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+    }
+    const linhas: string[] = []
+    linhas.push(
+      ['Financeiro', 'Banco', 'Agência', 'Conta', 'Tipo', 'PIX', 'Saldo Inicial (R$)']
+        .map(esc)
+        .join(';'),
+    )
+    for (const c of contasFiltradas) {
+      const fin = financeiros.find((f) => f.id === c.financeiro_id)
+      linhas.push(
+        [
+          fin?.nome || '-',
+          c.banco,
+          c.agencia || '',
+          c.conta,
+          c.tipo,
+          c.pix || '',
+          Number(c.saldo_inicial).toFixed(2).replace('.', ','),
+        ]
+          .map(esc)
+          .join(';'),
+      )
+    }
+    const conteudo = '\uFEFF' + linhas.join('\r\n')
+    const blob = new Blob([conteudo], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const hoje = new Date()
+    const stamp = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(
+      hoje.getDate(),
+    ).padStart(2, '0')}`
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `contas-bancarias-${stamp}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    toast({
+      title: 'Exportação concluída!',
+      description: `${contasFiltradas.length} conta(s) exportada(s) em CSV (Excel pt-BR).`,
+    })
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -349,6 +434,13 @@ export default function ConfiguracoesPage() {
           >
             <CalendarClock className="w-3.5 h-3.5 mr-1.5" />
             4. Contas Fixas ({contasFixas.length})
+          </TabsTrigger>
+          <TabsTrigger
+            value="relatorio"
+            className="data-[state=active]:bg-[#00D68F] data-[state=active]:text-[#0B0F14] text-xs font-semibold"
+          >
+            <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
+            Relatório de Contas
           </TabsTrigger>
         </TabsList>
 
@@ -633,6 +725,17 @@ export default function ConfiguracoesPage() {
                 </select>
               </div>
               <div className="flex items-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportarContasCSV}
+                  disabled={contasFiltradas.length === 0}
+                  className="border-[#232B36] text-gray-300 hover:text-white text-xs h-8"
+                  title="Baixar contas visíveis em CSV (Excel pt-BR)"
+                >
+                  <Download className="w-3.5 h-3.5 mr-1" />
+                  Exportar CSV
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1004,6 +1107,17 @@ export default function ConfiguracoesPage() {
               </tbody>
             </table>
           </div>
+        </TabsContent>
+
+        {/* TAB RELATÓRIO: CONSOLIDAÇÃO DE CONTAS */}
+        <TabsContent value="relatorio" className="space-y-6 mt-4">
+          <RelatorioContas
+            financeiros={financeiros}
+            contas={contas}
+            loading={loading}
+            erro={null}
+            onRecarregar={carregarTudo}
+          />
         </TabsContent>
       </Tabs>
     </div>

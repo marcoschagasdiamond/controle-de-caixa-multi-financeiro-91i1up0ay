@@ -21,6 +21,7 @@ import {
   ShieldCheck,
   Sparkles,
   RefreshCw,
+  LineChart,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -31,6 +32,8 @@ import {
   Tooltip,
   CartesianGrid,
   Legend,
+  AreaChart,
+  Area,
 } from 'recharts'
 
 export default function Index() {
@@ -126,6 +129,38 @@ export default function Index() {
       .reduce((acc, l) => acc + Number(l.valor), 0)
   }, [lancamentosFiltrados, mesAtualStr])
 
+  // Mês anterior (YYYY-MM)
+  const mesAnteriorStr = useMemo(() => {
+    const d = new Date()
+    const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1)
+    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`
+  }, [])
+
+  const entradasMesAnterior = useMemo(() => {
+    return lancamentosFiltrados
+      .filter(
+        (l) =>
+          l.tipo === 'credito' && l.status === 'realizado' && l.data.startsWith(mesAnteriorStr),
+      )
+      .reduce((acc, l) => acc + Number(l.valor), 0)
+  }, [lancamentosFiltrados, mesAnteriorStr])
+
+  const saidasMesAnterior = useMemo(() => {
+    return lancamentosFiltrados
+      .filter(
+        (l) => l.tipo === 'debito' && l.status === 'realizado' && l.data.startsWith(mesAnteriorStr),
+      )
+      .reduce((acc, l) => acc + Number(l.valor), 0)
+  }, [lancamentosFiltrados, mesAnteriorStr])
+
+  // Delta percentual vs mês anterior (null quando não há base comparável)
+  const deltaPct = (atual: number, anterior: number): number | null => {
+    if (anterior === 0) return atual === 0 ? null : null
+    return ((atual - anterior) / Math.abs(anterior)) * 100
+  }
+  const deltaEntradas = deltaPct(entradasDoMes, entradasMesAnterior)
+  const deltaSaidas = deltaPct(saidasDoMes, saidasMesAnterior)
+
   // 4. Resultado do Mês
   const resultadoDoMes = entradasDoMes - saidasDoMes
 
@@ -169,6 +204,39 @@ export default function Index() {
 
     return meses
   }, [lancamentosFiltrados])
+
+  // EVOLUÇÃO DO SALDO: saldo acumulado ao fim de cada um dos últimos 6 meses
+  // (saldo inicial das contas + todos os lançamentos realizados até o fim do mês)
+  const evolucaoSaldo = useMemo(() => {
+    if (dadosGrafico6Meses.length === 0) return []
+    const inicioJanela = `${dadosGrafico6Meses[0].mesAno}-01`
+    // base: saldo inicial das contas + lançamentos realizados ANTES da janela de 6 meses
+    let saldoAcumulado = contasFiltradas.reduce((acc, c) => acc + Number(c.saldo_inicial), 0)
+    for (const l of lancamentosFiltrados) {
+      if (l.status === 'realizado' && l.data < inicioJanela) {
+        saldoAcumulado += l.tipo === 'credito' ? Number(l.valor) : -Number(l.valor)
+      }
+    }
+    return dadosGrafico6Meses.map((m) => {
+      for (const l of lancamentosFiltrados) {
+        if (l.status === 'realizado' && l.data.startsWith(m.mesAno)) {
+          if (l.tipo === 'credito') saldoAcumulado += Number(l.valor)
+          else saldoAcumulado -= Number(l.valor)
+        }
+      }
+      return { label: m.label, saldo: saldoAcumulado }
+    })
+  }, [dadosGrafico6Meses, contasFiltradas, lancamentosFiltrados])
+
+  // DESTAQUES: os 3 lançamentos do mês que mais impactaram o resultado
+  const destaquesDoMes = useMemo(() => {
+    const doMes = lancamentosFiltrados
+      .filter((l) => l.status === 'realizado' && l.data.startsWith(mesAtualStr))
+      .map((l) => ({ ...l, impacto: l.tipo === 'credito' ? Number(l.valor) : -Number(l.valor) }))
+      .sort((a, b) => Math.abs(b.impacto) - Math.abs(a.impacto))
+      .slice(0, 3)
+    return doMes
+  }, [lancamentosFiltrados, mesAtualStr])
 
   // PRÓXIMOS VENCIMENTOS (Lançamentos previstos e contas fixas próximas)
   const proximosVencimentos = useMemo(() => {
@@ -312,7 +380,12 @@ export default function Index() {
           <div className="text-xl font-bold font-mono mt-1 text-[#00D68F]">
             + {formatCurrency(entradasDoMes)}
           </div>
-          <p className="text-[10px] text-gray-500 mt-1">Créditos realizados no mês</p>
+          <DeltaPct
+            delta={deltaEntradas}
+            label="vs. mês passado"
+            corBoa="text-[#00D68F]"
+            corRuim="text-[#FF5C5C]"
+          />
         </Card>
 
         {/* Card 3: Saídas do Mês */}
@@ -324,7 +397,13 @@ export default function Index() {
           <div className="text-xl font-bold font-mono mt-1 text-[#FF5C5C]">
             - {formatCurrency(saidasDoMes)}
           </div>
-          <p className="text-[10px] text-gray-500 mt-1">Débitos realizados no mês</p>
+          <DeltaPct
+            delta={deltaSaidas}
+            label="vs. mês passado"
+            corBoa="text-[#00D68F]"
+            corRuim="text-[#FF5C5C]"
+            inverteCor
+          />
         </Card>
 
         {/* Card 4: Resultado */}
@@ -404,6 +483,129 @@ export default function Index() {
               <Bar dataKey="saidas" name="Saídas (R$)" fill="#FF5C5C" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
+      {/* EVOLUÇÃO DO SALDO (últimos 6 meses, acumulado) */}
+      <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
+        <CardHeader className="pb-3 border-b border-[#232B36] flex flex-row items-center justify-between">
+          <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+            <LineChart className="w-4 h-4 text-[#00D68F]" />
+            Evolução do Saldo (Últimos 6 Meses)
+          </CardTitle>
+          <span className="text-xs text-gray-400 font-mono">
+            Saldo acumulado ao fim de cada mês
+          </span>
+        </CardHeader>
+        <CardContent className="p-0">
+          {evolucaoSaldo.some((p) => p.saldo !== 0) ? (
+            <>
+              <div className="h-52 w-full px-4 pt-4">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={evolucaoSaldo}>
+                    <defs>
+                      <linearGradient id="gradSaldo" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#00D68F" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#00D68F" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#232B36" />
+                    <XAxis dataKey="label" stroke="#64748B" fontSize={11} />
+                    <YAxis
+                      stroke="#64748B"
+                      fontSize={11}
+                      tickFormatter={(val: number) => `R$ ${(val / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#0B0F14',
+                        borderColor: '#232B36',
+                        borderRadius: '8px',
+                        color: '#F1F5F9',
+                      }}
+                      formatter={(value: any) => formatCurrency(Number(value))}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="saldo"
+                      name="Saldo (R$)"
+                      stroke="#00D68F"
+                      strokeWidth={2}
+                      fill="url(#gradSaldo)"
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              {/* Mini-tabela dos valores */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 divide-x divide-[#232B36] border-t border-[#232B36]">
+                {evolucaoSaldo.map((p) => (
+                  <div key={p.label} className="p-2.5 text-center">
+                    <div className="text-[10px] uppercase text-gray-500 font-semibold">
+                      {p.label}
+                    </div>
+                    <div
+                      className={`text-[11px] font-mono font-bold mt-0.5 ${
+                        p.saldo < 0 ? 'text-[#FF5C5C]' : 'text-white'
+                      }`}
+                    >
+                      {formatCurrency(p.saldo)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="p-8 text-center text-xs text-gray-500">
+              Sem histórico suficiente para exibir a evolução do saldo nos últimos 6 meses.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* DESTAQUES: maiores impactos no resultado do mês */}
+      <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
+        <CardHeader className="pb-3 border-b border-[#232B36] flex flex-row items-center justify-between">
+          <CardTitle className="text-base font-bold text-white flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-[#00D68F]" />
+            Maiores Impactos do Mês
+          </CardTitle>
+          <span className="text-xs text-gray-400 font-mono">
+            Top {destaquesDoMes.length || 3} lançamentos
+          </span>
+        </CardHeader>
+        <CardContent className="p-0">
+          {destaquesDoMes.length === 0 ? (
+            <div className="p-8 text-center text-xs text-gray-500">
+              Nenhum lançamento realizado neste mês ainda.
+            </div>
+          ) : (
+            <div className="divide-y divide-[#232B36]">
+              {destaquesDoMes.map((l, idx) => (
+                <div key={l.id} className="p-3 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="w-6 h-6 rounded-full bg-[#0B0F14] border border-[#232B36] flex items-center justify-center text-[10px] font-bold text-gray-400 flex-shrink-0">
+                      {idx + 1}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white text-xs truncate">{l.descricao}</div>
+                      <div className="text-[11px] text-gray-400 flex items-center gap-2 mt-0.5">
+                        <span className="font-mono">{formatDateBR(l.data)}</span>
+                        <span>•</span>
+                        <span className="truncate">{l.contraparte || 'Sem contraparte'}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <span
+                    className={`font-mono font-bold text-xs flex-shrink-0 ${
+                      l.impacto >= 0 ? 'text-[#00D68F]' : 'text-[#FF5C5C]'
+                    }`}
+                  >
+                    {l.impacto >= 0 ? '+' : '-'} {formatCurrency(Math.abs(l.impacto))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -513,6 +715,41 @@ export default function Index() {
           </CardContent>
         </Card>
       </div>
+    </div>
+  )
+}
+
+// Delta percentual com seta — corBoa/corRuim definem o significado por contexto
+// (ex.: aumento de saídas é ruim → inverteCor troca verde/vermelho)
+function DeltaPct({
+  delta,
+  label,
+  corBoa,
+  corRuim,
+  inverteCor = false,
+}: {
+  delta: number | null
+  label: string
+  corBoa: string
+  corRuim: string
+  inverteCor?: boolean
+}) {
+  if (delta === null || !isFinite(delta)) {
+    return <p className="text-[10px] text-gray-500 mt-1">Sem base de comparação no mês anterior</p>
+  }
+  const subiu = delta >= 0
+  const positivo = inverteCor ? !subiu : subiu
+  return (
+    <div className="flex items-center gap-1 mt-1">
+      {subiu ? (
+        <ArrowUpRight className={`w-3 h-3 ${positivo ? corBoa : corRuim}`} />
+      ) : (
+        <ArrowDownRight className={`w-3 h-3 ${positivo ? corBoa : corRuim}`} />
+      )}
+      <span className={`text-[10px] font-semibold ${positivo ? corBoa : corRuim}`}>
+        {subiu ? '+' : ''}
+        {delta.toFixed(1)}% {label}
+      </span>
     </div>
   )
 }
