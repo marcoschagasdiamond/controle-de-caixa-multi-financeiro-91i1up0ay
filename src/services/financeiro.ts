@@ -172,14 +172,14 @@ export const FinanceiroService = {
   },
 
   async createLancamentoRecorrente(
-    payload: Omit<LancamentoRecorrente, 'id' | 'user_id' | 'created_at' | 'updated_at'>,
+    payload: Omit<LancamentoRecorrente, 'id' | 'user_id' | 'created_at' | 'updated_at' | 'ativo'>,
   ): Promise<LancamentoRecorrente> {
     const {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) throw new Error('Usuário não autenticado')
     const { data, error } = await (supabase.from('lancamentos_recorrentes') as any)
-      .insert({ ...payload, user_id: user.id })
+      .insert({ ativo: true, ...payload, user_id: user.id })
       .select()
       .single()
     if (error) throw error

@@ -435,7 +435,6 @@ export default function ConfiguracoesPage() {
         await FinanceiroService.createLancamentoRecorrente({
           ...payload,
           data_inicial: getTodayISODate(),
-          ativo: true,
         })
         toast({ title: 'Lançamento recorrente cadastrado com sucesso!' })
       }

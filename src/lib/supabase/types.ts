@@ -517,6 +517,7 @@ export type Database = {
           plano_conta_id: string
           status: string
           tipo: string
+          total_parcelas: number | null
           updated_at: string
           user_id: string
           valor: number
@@ -533,6 +534,7 @@ export type Database = {
           plano_conta_id: string
           status?: string
           tipo: string
+          total_parcelas?: number | null
           updated_at?: string
           user_id: string
           valor: number
@@ -549,6 +551,7 @@ export type Database = {
           plano_conta_id?: string
           status?: string
           tipo?: string
+          total_parcelas?: number | null
           updated_at?: string
           user_id?: string
           valor?: number

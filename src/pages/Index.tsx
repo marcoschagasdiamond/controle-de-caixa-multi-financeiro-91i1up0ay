@@ -12,6 +12,7 @@ import {
 import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
 import { CalendarClock, TrendingDown } from 'lucide-react'
 import { projetarSaldo30Dias, ocorrenciasRecorrentes } from '@/lib/projecao'
+import { avisoEncerramento } from '@/lib/recorrentes'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -31,6 +32,7 @@ import {
   Sparkles,
   RefreshCw,
   LineChart,
+  AlertTriangle,
 } from 'lucide-react'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import {
@@ -263,7 +265,7 @@ export default function Index() {
   }, [lancamentosFiltrados, mesAtualStr])
 
   // PRÓXIMOS VENCIMENTOS (Lançamentos previstos + ocorrências de recorrentes)
-  const proximosVencimentos = useMemo(() => {
+  const proximosVencimentosCalc = useMemo(() => {
     const hoje = getTodayISODate()
     const previstos = lancamentosFiltrados
       .filter((l) => l.status === 'previsto' && l.data >= hoje)
@@ -311,6 +313,9 @@ export default function Index() {
       .slice(0, 5)
     return { itens, avisos }
   }, [lancamentosFiltrados, recorrentesFiltrados])
+
+  const proximosVencimentos = proximosVencimentosCalc.itens
+  const avisosEncerramento = proximosVencimentosCalc.avisos
 
   // SALDO PROJETADO EM 30 DIAS
   const projecao = useMemo(
@@ -726,6 +731,24 @@ export default function Index() {
             </Button>
           </CardHeader>
           <CardContent className="p-0">
+            {avisosEncerramento.length > 0 && (
+              <div className="px-3 pt-3 space-y-2">
+                {avisosEncerramento.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-start gap-2 rounded-md border border-amber-400/30 bg-amber-400/10 p-2.5 text-[11px] text-amber-300"
+                  >
+                    <AlertTriangle
+                      className="mt-0.5 h-3.5 w-3.5 flex-shrink-0"
+                      aria-hidden="true"
+                    />
+                    <span>
+                      <b className="font-semibold text-amber-200">{a.descricao}:</b> {a.texto}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             {proximosVencimentos.length === 0 ? (
               <div className="p-8 text-center text-xs text-gray-500">
                 Nenhum vencimento previsto para os próximos dias.
