@@ -801,6 +801,15 @@ export type Database = {
       }
     }
     Functions: {
+      equipe_listar_membros: {
+        Args: never
+        Returns: {
+          email: string
+          financeiro_ids: string[]
+          member_user_id: string
+          nome: string
+        }[]
+      }
       usuario_pode_acessar_financeiro: {
         Args: { p_financeiro_id: string }
         Returns: boolean

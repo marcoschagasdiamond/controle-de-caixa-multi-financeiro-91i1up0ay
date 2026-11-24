@@ -62,6 +62,7 @@ export interface LancamentoRecorrente {
   status: 'previsto'
   dia_mes: number
   data_inicial: string // YYYY-MM-DD
+  total_parcelas?: number | null // parcelado: nº total de parcelas; ausente/NULL = mensal contínua
   ativo: boolean
   created_at?: string
   updated_at?: string

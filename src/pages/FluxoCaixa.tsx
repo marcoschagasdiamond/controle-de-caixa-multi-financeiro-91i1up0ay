@@ -9,7 +9,7 @@ import {
 } from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate, addDays } from '@/lib/formatters'
 import { baixarCSV, valorCSV } from '@/lib/csv'
-import { recorrenteOcorreEm } from '@/lib/recorrentes'
+import { recorrenteOcorreEm, numeroParcela } from '@/lib/recorrentes'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -175,14 +175,21 @@ export default function FluxoCaixaPage() {
 
         // Lançamentos recorrentes mensais ativos (programação; o pagamento real é lançado à mão)
         for (const rc of recorrentesFiltrados) {
-          if (rc.ativo && recorrenteOcorreEm(dataDia, rc.dia_mes, rc.data_inicial)) {
+          if (
+            rc.ativo &&
+            recorrenteOcorreEm(dataDia, rc.dia_mes, rc.data_inicial, rc.total_parcelas)
+          ) {
             const val = Number(rc.valor)
+            const parcelado = !!rc.total_parcelas && rc.total_parcelas > 0
+            const rotulo = parcelado
+              ? `Parcela ${numeroParcela(dataDia, rc.data_inicial)}/${rc.total_parcelas} — ${rc.descricao}`
+              : `${rc.descricao} (Recorrente mensal)`
             if (rc.tipo === 'credito') {
               entradas += val
-              fixasDoDia.push(`+ ${rc.descricao} (Recorrente mensal)`)
+              fixasDoDia.push(`+ ${rotulo}`)
             } else {
               saidas += val
-              fixasDoDia.push(`- ${rc.descricao} (Recorrente mensal)`)
+              fixasDoDia.push(`- ${rotulo}`)
             }
           }
         }

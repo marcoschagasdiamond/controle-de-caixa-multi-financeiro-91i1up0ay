@@ -4,7 +4,7 @@
 // RLS: tudo chega já filtrado por user_id; o filtro por financeiro é aplicado aqui.
 
 import { Lancamento, ContaFixa, LancamentoRecorrente, ContaBancaria } from '@/types/financeiro'
-import { recorrenteOcorreEm } from '@/lib/recorrentes'
+import { recorrenteOcorreEm, numeroParcela } from '@/lib/recorrentes'
 import { getTodayISODate, addDays } from '@/lib/formatters'
 
 export interface ProjecaoDetalhe {
@@ -119,15 +119,19 @@ export function projetarSaldo30Dias(
     // varre dia a dia a janela [hoje, limite]
     let cursor = hoje
     while (cursor <= limite) {
-      if (recorrenteOcorreEm(cursor, r.dia_mes, r.data_inicial)) {
+      if (recorrenteOcorreEm(cursor, r.dia_mes, r.data_inicial, r.total_parcelas)) {
         // Já existe lançamento previsto/realizado equivalente no mesmo dia e financeiro? evita dupla contagem
         const duplicado = lancamentos.some(
           (l) =>
             l.financeiro_id === r.financeiro_id && l.descricao === r.descricao && l.data === cursor,
         )
         if (!duplicado) {
+          const parcelado = !!r.total_parcelas && r.total_parcelas > 0
+          const descricao = parcelado
+            ? `${r.descricao} (${numeroParcela(cursor, r.data_inicial)}/${r.total_parcelas})`
+            : r.descricao
           push(
-            { data: cursor, descricao: r.descricao, tipo: r.tipo, origem: 'recorrente' },
+            { data: cursor, descricao, tipo: r.tipo, origem: 'recorrente' },
             Number(r.valor),
             r.tipo === 'credito' ? 1 : -1,
           )
@@ -164,7 +168,7 @@ export function ocorrenciasRecorrentes(
     if (!r.ativo || !filtrar(r.financeiro_id)) continue
     let cursor = hoje
     while (cursor <= limite && lista.length < max + 20) {
-      if (recorrenteOcorreEm(cursor, r.dia_mes, r.data_inicial)) {
+      if (recorrenteOcorreEm(cursor, r.dia_mes, r.data_inicial, r.total_parcelas)) {
         const duplicado = lancamentos.some(
           (l) =>
             l.financeiro_id === r.financeiro_id &&
@@ -173,9 +177,12 @@ export function ocorrenciasRecorrentes(
             (l.status === 'realizado' || l.status === 'previsto'),
         )
         if (!duplicado) {
+          const parcelado = !!r.total_parcelas && r.total_parcelas > 0
           lista.push({
             data: cursor,
-            descricao: r.descricao,
+            descricao: parcelado
+              ? `${r.descricao} (${numeroParcela(cursor, r.data_inicial)}/${r.total_parcelas})`
+              : r.descricao,
             valor: Number(r.valor),
             tipo: r.tipo,
             origem: 'recorrente',

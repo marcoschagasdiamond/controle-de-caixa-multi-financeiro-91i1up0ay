@@ -291,9 +291,25 @@ export default function Index() {
       tipo: o.tipo,
       origem: 'recorrente' as const,
     }))
-    return [...previstos, ...recorrentesOcorrencias]
+    // AVISO DE ENCERRAMENTO: recorrentes parcelados que encerram em 1 mês ou menos
+    const avisos = recorrentesFiltrados
+      .map((r) => ({
+        r,
+        aviso: avisoEncerramento(hoje, r.dia_mes, r.data_inicial, r.total_parcelas),
+      }))
+      .filter((x) => x.aviso !== null)
+      .map(({ r, aviso }) => ({
+        id: `aviso:${r.id}`,
+        descricao: r.descricao,
+        texto:
+          aviso!.parcelasRestantes === 1
+            ? `Última parcela — ${r.tipo === 'credito' ? 'o recebimento' : 'o pagamento'} encerra em ${aviso!.mesEncerramento}`
+            : `Faltam ${aviso!.parcelasRestantes} parcelas — ${r.tipo === 'credito' ? 'o recebimento' : 'o pagamento'} encerra em ${aviso!.mesEncerramento}`,
+      }))
+    const itens = [...previstos, ...recorrentesOcorrencias]
       .sort((a, b) => a.data.localeCompare(b.data))
       .slice(0, 5)
+    return { itens, avisos }
   }, [lancamentosFiltrados, recorrentesFiltrados])
 
   // SALDO PROJETADO EM 30 DIAS

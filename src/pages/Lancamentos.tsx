@@ -30,6 +30,8 @@ import { useToast } from '@/hooks/use-toast'
 import { useNavigate } from 'react-router-dom'
 import { baixarCSV, valorCSV } from '@/lib/csv'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
+import { dataUltimaParcela, mesPorExtenso } from '@/lib/recorrentes'
+import { CalendarClock, Repeat } from 'lucide-react'
 
 export default function LancamentosPage() {
   const { toast } = useToast()
@@ -58,6 +60,30 @@ export default function LancamentosPage() {
   const [contraparte, setContraparte] = useState('')
   const [documento, setDocumento] = useState('')
   const [observacao, setObservacao] = useState('')
+  // Recorrência (passo 3): nenhuma (padrão) / mensal contínua / parcelada em N parcelas
+  const [tipoRecorrencia, setTipoRecorrencia] = useState<'nenhuma' | 'continua' | 'parcelada'>(
+    'nenhuma',
+  )
+  const [totalParcelas, setTotalParcelas] = useState('')
+
+  // Valor numérico de UMA parcela (o valor do campo) e o total geral do parcelamento
+  const valorParcela = useMemo(() => {
+    const v = parseFloat(valor.replace(',', '.'))
+    return isNaN(v) ? 0 : v
+  }, [valor])
+
+  const parcelaInfo = useMemo(() => {
+    if (tipoRecorrencia !== 'parcelada') return null
+    const n = parseInt(totalParcelas, 10)
+    if (isNaN(n) || n < 2) return null
+    const diaMes = Math.max(1, Math.min(Number(dataLancamento.slice(8, 10)) || 1, 31))
+    const ultima = dataUltimaParcela(diaMes, dataLancamento, n)
+    return {
+      n,
+      mesUltima: mesPorExtenso(ultima),
+      totalGeral: valorParcela * n,
+    }
+  }, [tipoRecorrencia, totalParcelas, dataLancamento, valorParcela])
 
   // Mensagens de erro com destaque especial para violação de segregação
   const [formError, setFormError] = useState<string | null>(null)
@@ -168,6 +194,13 @@ export default function LancamentosPage() {
       return
     }
 
+    // Validação da recorrência parcelada
+    const nParcelas = tipoRecorrencia === 'parcelada' ? parseInt(totalParcelas, 10) : 0
+    if (tipoRecorrencia === 'parcelada' && (isNaN(nParcelas) || nParcelas < 2)) {
+      setFormError('Informe o total de parcelas (mínimo 2) para o parcelamento.')
+      return
+    }
+
     try {
       setSaving(true)
       await FinanceiroService.createLancamento({
@@ -185,6 +218,33 @@ export default function LancamentosPage() {
         conciliado: false,
       })
 
+      // RECORRÊNCIA: cria a programação (mensal contínua ou parcelada) além do lançamento atual.
+      // O lançamento salvo acima é a 1ª ocorrência; as futuras aparecem no Fluxo de Caixa
+      // e nos Próximos Vencimentos via ocorrências geradas em recorrentes.ts/projecao.ts.
+      if (tipoRecorrencia !== 'nenhuma') {
+        try {
+          await FinanceiroService.createLancamentoRecorrente({
+            financeiro_id: selectedFinId,
+            conta_id: selectedContaId,
+            plano_conta_id: selectedPlanoId,
+            tipo: tipoLancamento,
+            valor: valorNum,
+            status: 'previsto',
+            dia_mes: Number(dataLancamento.slice(8, 10)),
+            data_inicial: dataLancamento,
+            descricao: descricao.trim(),
+            ...(tipoRecorrencia === 'parcelada' ? { total_parcelas: nParcelas } : {}),
+          })
+        } catch (errRec: any) {
+          console.error(errRec)
+          toast({
+            variant: 'destructive',
+            title: 'Lançamento salvo, mas a recorrência não foi criada',
+            description: errRec.message,
+          })
+        }
+      }
+
       // REGRA: Toast e MANTER o financeiro para lançar em sequência
       toast({
         title: 'Lançamento salvo com sucesso!',
@@ -200,6 +260,8 @@ export default function LancamentosPage() {
       setDocumento('')
       setObservacao('')
       setDataLancamento(getTodayISODate())
+      setTipoRecorrencia('nenhuma')
+      setTotalParcelas('')
 
       // Recarrega listagem
       const novosLcs = await FinanceiroService.getLancamentos()
@@ -669,6 +731,97 @@ export default function LancamentosPage() {
                   className="bg-[#0B0F14] border-[#232B36] text-white"
                 />
               </div>
+            </div>
+
+            {/* RECORRÊNCIA: vale para crédito e débito (mesmo formulário) */}
+            <div className="rounded-lg border border-[#232B36] bg-[#0B0F14] p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <Repeat className="w-4 h-4 text-[#00D68F]" />
+                <Label className="text-xs uppercase tracking-wider text-gray-300 font-bold">
+                  Recorrência
+                </Label>
+                <span className="text-[11px] text-gray-500">
+                  (crédito ou débito — as parcelas futuras entram no Fluxo de Caixa)
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTipoRecorrencia('nenhuma')}
+                  className={`p-2.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                    tipoRecorrencia === 'nenhuma'
+                      ? 'bg-[#1E2633] border-[#00D68F] text-white'
+                      : 'bg-[#0B0F14] border-[#232B36] text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Sem recorrência
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoRecorrencia('continua')}
+                  className={`p-2.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                    tipoRecorrencia === 'continua'
+                      ? 'bg-[#1E2633] border-[#00D68F] text-white'
+                      : 'bg-[#0B0F14] border-[#232B36] text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Mensal contínua
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTipoRecorrencia('parcelada')}
+                  className={`p-2.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                    tipoRecorrencia === 'parcelada'
+                      ? 'bg-[#1E2633] border-[#00D68F] text-white'
+                      : 'bg-[#0B0F14] border-[#232B36] text-gray-400 hover:text-white'
+                  }`}
+                >
+                  Parcelado em N parcelas
+                </button>
+              </div>
+              {tipoRecorrencia === 'parcelada' && (
+                <div className="space-y-2">
+                  <div className="flex items-end gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="totalParcelas" className="text-xs text-gray-400 font-medium">
+                        Total de parcelas *
+                      </Label>
+                      <Input
+                        id="totalParcelas"
+                        type="number"
+                        inputMode="numeric"
+                        min={2}
+                        max={360}
+                        step={1}
+                        value={totalParcelas}
+                        onChange={(e) => setTotalParcelas(e.target.value)}
+                        placeholder="Ex: 12"
+                        className="w-32 bg-[#141A22] border-[#232B36] text-white font-mono"
+                      />
+                    </div>
+                    <p className="text-[11px] text-gray-500 pb-2.5">
+                      Valor informado = valor de CADA parcela, no dia {formatDateBR(dataLancamento)}{' '}
+                      e nos meses seguintes.
+                    </p>
+                  </div>
+                  {parcelaInfo && (
+                    <div className="flex items-start gap-2 rounded-md bg-[#00D68F]/10 border border-[#00D68F]/30 p-2.5">
+                      <CalendarClock className="w-3.5 h-3.5 text-[#00D68F] mt-0.5 shrink-0" />
+                      <p className="text-[11px] text-gray-300">
+                        {parcelaInfo.n} parcelas de {formatCurrency(valorParcela)} — total{' '}
+                        {formatCurrency(parcelaInfo.totalGeral)}; última em{' '}
+                        <b className="text-white">{parcelaInfo.mesUltima}</b>. O sistema avisa 1 mês
+                        antes do encerramento.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+              {tipoRecorrencia === 'continua' && (
+                <p className="text-[11px] text-gray-500">
+                  Repete todo mês no mesmo dia, até você desativar em Configurações → Recorrentes.
+                </p>
+              )}
             </div>
 
             <div className="flex flex-col items-end gap-2 pt-4 border-t border-[#232B36]">
