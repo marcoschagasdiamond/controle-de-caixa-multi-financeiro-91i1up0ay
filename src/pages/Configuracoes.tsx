@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { FinanceiroService } from '@/services/financeiro'
+import { FinanceiroService, TotalPorCategoria, PeriodoTotais } from '@/services/financeiro'
 import {
   Financeiro,
   ContaBancaria,
@@ -27,6 +27,8 @@ import {
   Edit2,
   PowerOff,
   Power,
+  Copy,
+  Search,
   CheckCircle2,
   AlertTriangle,
   Loader2,
@@ -106,6 +108,14 @@ export default function ConfiguracoesPage() {
   const [planoTipo, setPlanoTipo] = useState<'receita' | 'despesa'>('despesa')
   const [savingPlano, setSavingPlano] = useState(false)
   const [editingPlanoId, setEditingPlanoId] = useState<string | null>(null)
+  const [duplicandoPlanoId, setDuplicandoPlanoId] = useState<string | null>(null)
+  // Busca por código ou descrição na listagem do plano
+  const [planoBusca, setPlanoBusca] = useState('')
+  // Total lançado por categoria (somente realizados) e período selecionado
+  const [periodoTotais, setPeriodoTotais] = useState<PeriodoTotais>('ano')
+  const [totaisPorCategoria, setTotaisPorCategoria] = useState<Map<string, TotalPorCategoria>>(
+    new Map(),
+  )
 
   // Filtros da listagem de Contas Bancárias (persistidos no navegador)
   const [filtroContaFin, setFiltroContaFin] = useState<string>(() =>
@@ -193,6 +203,22 @@ export default function ConfiguracoesPage() {
     carregarTudo()
   }, [])
 
+  // Totais por categoria: recalculados ao trocar o período (uma consulta agrupada)
+  useEffect(() => {
+    let ativo = true
+    FinanceiroService.getTotaisPorCategoria(periodoTotais)
+      .then((t) => {
+        if (ativo) setTotaisPorCategoria(t)
+      })
+      .catch((err: any) => {
+        console.error(err)
+        if (ativo) setTotaisPorCategoria(new Map())
+      })
+    return () => {
+      ativo = false
+    }
+  }, [periodoTotais])
+
   // Handlers de Criação
   const handleCriarFinanceiro = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -245,6 +271,14 @@ export default function ConfiguracoesPage() {
   const contasFixasFiltradas = contasFixas.filter(
     (cf) => filtroFixaFin === 'todos' || cf.financeiro_id === filtroFixaFin,
   )
+  // Busca do plano de contas: filtra em tempo real por código OU descrição
+  const planosFiltrados = useMemo(() => {
+    const q = planoBusca.trim().toLowerCase()
+    if (!q) return planos
+    return planos.filter(
+      (p) => p.codigo.toLowerCase().includes(q) || p.descricao.toLowerCase().includes(q),
+    )
+  }, [planos, planoBusca])
 
   const limparFormConta = () => {
     setEditingContaId(null)
@@ -375,6 +409,26 @@ export default function ConfiguracoesPage() {
       await carregarTudo()
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro ao excluir', description: err.message })
+    }
+  }
+
+  const handleDuplicarPlano = async (p: PlanoConta) => {
+    try {
+      setDuplicandoPlanoId(p.id)
+      await FinanceiroService.duplicarPlanoConta(p)
+      toast({ title: 'Categoria duplicada com sucesso!' })
+      await Promise.all([
+        carregarTudo(),
+        FinanceiroService.getTotaisPorCategoria(periodoTotais).then(setTotaisPorCategoria),
+      ])
+    } catch (err: any) {
+      const msg =
+        err?.code === '23505' || /duplicate key|unique/i.test(err?.message || '')
+          ? 'Não foi possível gerar um código/descrição únicos para a cópia. Renomeie a categoria original e tente novamente.'
+          : err?.message
+      toast({ variant: 'destructive', title: 'Erro ao duplicar categoria', description: msg })
+    } finally {
+      setDuplicandoPlanoId(null)
     }
   }
 
@@ -1066,56 +1120,119 @@ export default function ConfiguracoesPage() {
             </CardContent>
           </Card>
 
-          {/* Listagem */}
-          <div className="overflow-x-auto bg-[#141A22] border border-[#232B36] rounded-xl max-h-96">
-            <table className="w-full text-left text-sm text-gray-300">
-              <thead className="bg-[#0B0F14] border-b border-[#232B36] text-xs text-gray-400 uppercase tracking-wider font-semibold sticky top-0">
-                <tr>
-                  <th className="py-3 px-4">Código</th>
-                  <th className="py-3 px-4">Descrição</th>
-                  <th className="py-3 px-4">Tipo</th>
-                  <th className="py-3 px-4 text-center">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#232B36]">
-                {planos.map((p) => {
-                  return (
-                    <tr key={p.id} className="hover:bg-[#1A222D]/40">
-                      <td className="py-2.5 px-4 font-mono text-xs text-gray-400">{p.codigo}</td>
-                      <td className="py-2.5 px-4 text-white font-medium">{p.descricao}</td>
-                      <td className="py-2.5 px-4">
-                        <Badge
-                          variant="outline"
-                          className={`text-[10px] ${
-                            p.tipo === 'receita'
-                              ? 'text-[#00D68F] border-[#00D68F]/30'
-                              : 'text-[#FF5C5C] border-[#FF5C5C]/30'
-                          }`}
-                        >
-                          {p.tipo}
-                        </Badge>
-                      </td>
-                      <td className="py-2.5 px-4 text-center">
-                        <button
-                          onClick={() => iniciarEdicaoPlano(p)}
-                          title="Editar categoria"
-                          className="p-1 text-gray-500 hover:text-[#00D68F] cursor-pointer mr-1"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleExcluirPlano(p.id)}
-                          title="Excluir categoria"
-                          className="p-1 text-gray-500 hover:text-[#FF5C5C] cursor-pointer"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+          {/* Listagem com busca, período e totais */}
+          <div className="bg-[#141A22] border border-[#232B36] rounded-xl">
+            {/* Busca + seletor de período dos totais */}
+            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3 p-3 border-b border-[#232B36]">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  value={planoBusca}
+                  onChange={(e) => setPlanoBusca(e.target.value)}
+                  placeholder="Buscar por código ou descrição..."
+                  aria-label="Buscar categoria por código ou descrição"
+                  className="pl-9 bg-[#0B0F14] border-[#232B36] text-white text-xs"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-[10px] text-gray-400 uppercase font-bold whitespace-nowrap">
+                  Período dos totais
+                </Label>
+                <select
+                  value={periodoTotais}
+                  onChange={(e) => setPeriodoTotais(e.target.value as PeriodoTotais)}
+                  aria-label="Período dos totais lançados"
+                  className="h-8 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs cursor-pointer"
+                >
+                  <option value="mes">Mês atual</option>
+                  <option value="ano">Ano atual</option>
+                  <option value="tudo">Tudo</option>
+                </select>
+              </div>
+            </div>
+            <div className="overflow-x-auto max-h-96">
+              <table className="w-full text-left text-sm text-gray-300">
+                <thead className="bg-[#0B0F14] border-b border-[#232B36] text-xs text-gray-400 uppercase tracking-wider font-semibold sticky top-0">
+                  <tr>
+                    <th className="py-3 px-4">Código</th>
+                    <th className="py-3 px-4">Descrição</th>
+                    <th className="py-3 px-4">Tipo</th>
+                    <th className="py-3 px-4 text-right">Despesas lançadas</th>
+                    <th className="py-3 px-4 text-right">Receitas lançadas</th>
+                    <th className="py-3 px-4 text-center">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#232B36]">
+                  {planosFiltrados.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
+                        {planos.length === 0
+                          ? 'Nenhuma categoria cadastrada ainda.'
+                          : 'Nenhuma categoria encontrada para a busca.'}
                       </td>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+                  ) : (
+                    planosFiltrados.map((p) => {
+                      const tot = totaisPorCategoria.get(p.id)
+                      return (
+                        <tr key={p.id} className="hover:bg-[#1A222D]/40">
+                          <td className="py-2.5 px-4 font-mono text-xs text-gray-400">
+                            {p.codigo}
+                          </td>
+                          <td className="py-2.5 px-4 text-white font-medium">{p.descricao}</td>
+                          <td className="py-2.5 px-4">
+                            <Badge
+                              variant="outline"
+                              className={`text-[10px] ${
+                                p.tipo === 'receita'
+                                  ? 'text-[#00D68F] border-[#00D68F]/30'
+                                  : 'text-[#FF5C5C] border-[#FF5C5C]/30'
+                              }`}
+                            >
+                              {p.tipo}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono text-xs text-[#FF5C5C] whitespace-nowrap">
+                            {tot ? formatCurrency(tot.despesa) : 'R$ 0,00'}
+                          </td>
+                          <td className="py-2.5 px-4 text-right font-mono text-xs text-[#00D68F] whitespace-nowrap">
+                            {tot ? formatCurrency(tot.receita) : 'R$ 0,00'}
+                          </td>
+                          <td className="py-2.5 px-4 text-center whitespace-nowrap">
+                            <button
+                              onClick={() => iniciarEdicaoPlano(p)}
+                              title="Editar categoria"
+                              className="p-1 text-gray-500 hover:text-[#00D68F] hover:bg-[#00D68F]/10 rounded transition-colors cursor-pointer mr-1"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handleDuplicarPlano(p)}
+                              title="Duplicar categoria"
+                              disabled={duplicandoPlanoId === p.id}
+                              className="p-1 text-gray-500 hover:text-[#00D68F] hover:bg-[#00D68F]/10 rounded transition-colors cursor-pointer disabled:opacity-50 mr-1"
+                            >
+                              {duplicandoPlanoId === p.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Copy className="w-4 h-4" />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => handleExcluirPlano(p.id)}
+                              title="Excluir categoria"
+                              className="p-1 text-gray-500 hover:text-[#FF5C5C] hover:bg-[#FF5C5C]/10 rounded transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </TabsContent>
 

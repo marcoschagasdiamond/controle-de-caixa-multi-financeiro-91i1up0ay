@@ -14,6 +14,15 @@ import {
   LancamentoRecorrente,
 } from '@/types/financeiro'
 
+// Total lançado (somente realizados) por categoria do plano de contas
+export interface TotalPorCategoria {
+  despesa: number
+  receita: number
+}
+
+// Período dos totais na aba Plano de Contas
+export type PeriodoTotais = 'mes' | 'ano' | 'tudo'
+
 export const FinanceiroService = {
   // Financeiros
   async getFinanceiros(): Promise<Financeiro[]> {
@@ -127,6 +136,108 @@ export const FinanceiroService = {
   async deletePlanoConta(id: string): Promise<void> {
     const { error } = await supabase.from('plano_contas').delete().eq('id', id)
     if (error) throw error
+  },
+
+  // Total lançado por categoria em UMA consulta agrupada (somente lançamentos realizados).
+  // periodo: 'mes' (mês atual) | 'ano' (ano atual) | 'tudo' (todo o histórico)
+  async getTotaisPorCategoria(periodo: PeriodoTotais): Promise<Map<string, TotalPorCategoria>> {
+    let query = supabase
+      .from('lancamentos')
+      .select('plano_conta_id, tipo, valor')
+      .eq('status', 'realizado')
+    if (periodo === 'mes') {
+      const agora = new Date()
+      const inicio = new Date(agora.getFullYear(), agora.getMonth(), 1)
+      const fim = new Date(agora.getFullYear(), agora.getMonth() + 1, 0)
+      const iso = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+      query = query.gte('data', iso(inicio)).lte('data', iso(fim))
+    } else if (periodo === 'ano') {
+      const ano = new Date().getFullYear()
+      query = query.gte('data', `${ano}-01-01`).lte('data', `${ano}-12-31`)
+    }
+
+    const { data, error } = await query
+    if (error) throw error
+
+    const totais = new Map<string, TotalPorCategoria>()
+    for (const row of (data as any[]) || []) {
+      if (!row.plano_conta_id) continue
+      const atual = totais.get(row.plano_conta_id) || { despesa: 0, receita: 0 }
+      if (row.tipo === 'credito') atual.receita += Number(row.valor)
+      else atual.despesa += Number(row.valor)
+      totais.set(row.plano_conta_id, atual)
+    }
+    return totais
+  },
+
+  // Duplicar categoria: nova categoria idêntica (mesmo tipo) com o próximo sufixo
+  // livre dentro do mesmo grupo (2.09.01 → 2.09.02). Descrição recebe " (cópia)".
+  async duplicarPlanoConta(categoria: PlanoConta): Promise<PlanoConta> {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) throw new Error('Usuário não autenticado')
+
+    const { data: todas, error } = await supabase.from('plano_contas').select('codigo, descricao')
+    if (error) throw error
+    const existentes = (todas as Pick<PlanoConta, 'codigo' | 'descricao'>[]) || []
+
+    // Mesmo grupo da categoria original: tudo antes do último segmento
+    const sep = categoria.codigo.lastIndexOf('.')
+    const grupo = sep > 0 ? categoria.codigo.slice(0, sep) : ''
+    const sufixoAtual = categoria.codigo.slice(sep + 1)
+
+    const padWidth = Math.max(2, sufixoAtual.length)
+    let novoCodigo = ''
+    // Caminho 1: próximo índice livre dentro do grupo (até 200 tentativas)
+    for (let i = 2; i < 200; i++) {
+      const candidato = grupo ? `${grupo}.${String(i).padStart(padWidth, '0')}` : String(i)
+      const ocupado = existentes.some(
+        (p) => p.codigo.trim().toLowerCase() === candidato.trim().toLowerCase(),
+      )
+      if (!ocupado) {
+        novoCodigo = candidato
+        break
+      }
+    }
+    // Caminho 2: grupo cheio ou código inválido — gera um código único com sufixo -D1, -D2...
+    if (!novoCodigo) {
+      let n = 1
+      do {
+        novoCodigo = `${categoria.codigo}-D${n}`
+        n++
+      } while (
+        existentes.some((p) => p.codigo.trim().toLowerCase() === novoCodigo.toLowerCase()) &&
+        n < 100
+      )
+    }
+
+    // Descrição única: " (cópia)", " (cópia 2)", ... (índice único por usuário em descricao)
+    let novaDescricao = `${categoria.descricao} (cópia)`
+    if (existentes.some((p) => p.descricao.trim().toLowerCase() === novaDescricao.toLowerCase())) {
+      let n = 2
+      do {
+        novaDescricao = `${categoria.descricao} (cópia ${n})`
+        n++
+      } while (
+        existentes.some((p) => p.descricao.trim().toLowerCase() === novaDescricao.toLowerCase()) &&
+        n < 100
+      )
+    }
+
+    const { data, error: errInsert } = await (supabase.from('plano_contas') as any)
+      .insert({
+        codigo: novoCodigo,
+        descricao: novaDescricao,
+        tipo: categoria.tipo,
+        ativo: true,
+        user_id: user.id,
+      })
+      .select()
+      .single()
+    if (errInsert) throw errInsert
+    return data as PlanoConta
   },
 
   // Contas Fixas

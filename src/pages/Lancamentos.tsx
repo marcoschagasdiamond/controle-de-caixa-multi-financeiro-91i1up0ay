@@ -26,6 +26,17 @@ import {
   RefreshCw,
   Download,
 } from 'lucide-react'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command'
+import { Check, ChevronsUpDown } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
 import { useNavigate } from 'react-router-dom'
 import { baixarCSV, valorCSV } from '@/lib/csv'
@@ -57,6 +68,9 @@ export default function LancamentosPage() {
   const [selectedContaId, setSelectedContaId] = useState('')
   const [selectedPlanoId, setSelectedPlanoId] = useState('')
   const [statusLancamento, setStatusLancamento] = useState<'previsto' | 'realizado'>('realizado')
+  // Combobox de categoria (autocomplete): texto digitado + popover aberto
+  const [buscaCategoria, setBuscaCategoria] = useState('')
+  const [comboCategoriaAberto, setComboCategoriaAberto] = useState(false)
   const [contraparte, setContraparte] = useState('')
   const [documento, setDocumento] = useState('')
   const [observacao, setObservacao] = useState('')
@@ -146,6 +160,12 @@ export default function LancamentosPage() {
   const planosDoFinanceiro = useMemo(() => {
     return planos.filter((p) => p.tipo === (tipoLancamento === 'credito' ? 'receita' : 'despesa'))
   }, [planos, tipoLancamento])
+
+  // Categoria escolhida no combobox (exibida no botão)
+  const planoSelecionado = useMemo(
+    () => planosDoFinanceiro.find((p) => p.id === selectedPlanoId),
+    [planosDoFinanceiro, selectedPlanoId],
+  )
 
   // Todas as categorias globais, de qualquer tipo (receita/despesa).
   // Usado para detectar o caso "plano de contas vazio".
@@ -654,28 +674,83 @@ export default function LancamentosPage() {
                 </select>
               </div>
 
-              {/* Plano de Contas (SOMENTE do financeiro selecionado) */}
+              {/* Plano de Contas — combobox com autocomplete (globais, filtradas por tipo) */}
               <div className="space-y-1">
                 <Label className="text-xs text-gray-400 font-medium flex items-center gap-1">
                   <BookOpen className="w-3.5 h-3.5 text-[#00D68F]" />
                   Categoria (Plano de Contas) *
                 </Label>
-                <select
-                  required
-                  value={selectedPlanoId}
-                  onChange={(e) => setSelectedPlanoId(e.target.value)}
-                  className="w-full h-10 px-3 rounded-md bg-[#0B0F14] border border-[#232B36] text-white text-sm"
+                <Popover
+                  open={comboCategoriaAberto}
+                  onOpenChange={(aberto) => {
+                    setComboCategoriaAberto(aberto)
+                    if (aberto) setBuscaCategoria('')
+                  }}
                 >
-                  {planosDoFinanceiro.length === 0 ? (
-                    <option value="">Nenhuma categoria encontrada</option>
-                  ) : (
-                    planosDoFinanceiro.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.codigo} - {p.descricao}
-                      </option>
-                    ))
-                  )}
-                </select>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      role="combobox"
+                      aria-expanded={comboCategoriaAberto}
+                      aria-controls="lista-categorias"
+                      aria-label="Selecionar categoria do plano de contas"
+                      className="w-full h-10 px-3 rounded-md bg-[#0B0F14] border border-[#232B36] text-white text-sm flex items-center justify-between gap-2 cursor-pointer"
+                    >
+                      <span
+                        className={cn('truncate text-left', !selectedPlanoId && 'text-gray-500')}
+                      >
+                        {planoSelecionado
+                          ? `${planoSelecionado.codigo} - ${planoSelecionado.descricao}`
+                          : 'Selecione a categoria...'}
+                      </span>
+                      <ChevronsUpDown className="w-4 h-4 shrink-0 opacity-50" />
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent
+                    align="start"
+                    className="w-[--radix-popover-trigger-width] p-0 bg-[#141A22] border-[#232B36]"
+                  >
+                    <Command
+                      filter={(value, search) =>
+                        value.toLowerCase().includes(search.toLowerCase()) ? 1 : 0
+                      }
+                    >
+                      <CommandInput
+                        placeholder="Buscar categoria por código ou descrição..."
+                        value={buscaCategoria}
+                        onValueChange={setBuscaCategoria}
+                        className="text-white placeholder:text-gray-500"
+                      />
+                      <CommandList id="lista-categorias">
+                        <CommandEmpty className="py-4 text-center text-xs text-gray-500">
+                          Nenhuma categoria encontrada.
+                        </CommandEmpty>
+                        <CommandGroup>
+                          {planosDoFinanceiro.map((p) => (
+                            <CommandItem
+                              key={p.id}
+                              value={`${p.codigo} - ${p.descricao}`}
+                              onSelect={() => {
+                                setSelectedPlanoId(p.id)
+                                setComboCategoriaAberto(false)
+                              }}
+                              className="text-gray-200 aria-selected:bg-[#1E2633] aria-selected:text-[#00D68F] cursor-pointer"
+                            >
+                              <Check
+                                className={cn(
+                                  'mr-2 h-4 w-4',
+                                  selectedPlanoId === p.id ? 'opacity-100' : 'opacity-0',
+                                )}
+                              />
+                              <span className="font-mono text-xs text-gray-400">{p.codigo}</span>
+                              <span className="truncate">— {p.descricao}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
 
               {/* Status (Previsto / Realizado) */}
