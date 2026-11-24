@@ -119,6 +119,15 @@ export default function LancamentosPage() {
     )
   }, [planos, selectedFinId, tipoLancamento])
 
+  // Todas as categorias do financeiro selecionado, de qualquer tipo (receita/despesa).
+  // Usado para detectar o caso "financeiro sem NENHUM plano de contas".
+  const planosDoFinanceiroQualquerTipo = useMemo(() => {
+    if (!selectedFinId) return []
+    return planos.filter((p) => p.financeiro_id === selectedFinId)
+  }, [planos, selectedFinId])
+
+  const semPlanoContas = !!selectedFinId && planosDoFinanceiroQualquerTipo.length === 0
+
   // Atualiza selects padrão ao trocar financeiro ou tipo
   useEffect(() => {
     if (contasDoFinanceiro.length > 0) {
@@ -440,6 +449,35 @@ export default function LancamentosPage() {
               </span>
             </div>
 
+            {/* AVISO: financeiro sem NENHUMA categoria no plano de contas */}
+            {semPlanoContas && (
+              <div className="bg-[#FFB020]/10 border border-[#FFB020]/30 rounded-lg p-4 flex items-start gap-3">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-[#FFB020]/10 border border-[#FFB020]/30">
+                  <AlertTriangle className="w-5 h-5 text-[#FFB020]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4 className="text-sm font-bold text-white leading-tight">
+                    Este financeiro ainda não tem plano de contas
+                  </h4>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Cadastre uma categoria em Configurações (aba Plano de Contas) para poder
+                    registrar lançamentos de{' '}
+                    {tipoLancamento === 'credito' ? 'entrada (crédito)' : 'saída (débito)'} neste
+                    financeiro.
+                  </p>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => navigate('/configuracoes?tab=plano')}
+                    className="mt-2.5 bg-[#FFB020] hover:bg-[#FFB020]/85 text-[#0B0F14] font-bold text-xs h-8 px-3 cursor-pointer"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 mr-1.5" />
+                    Cadastrar Categoria em Configurações
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
               {/* Descrição */}
               <div className="md:col-span-2 space-y-1">
@@ -586,24 +624,28 @@ export default function LancamentosPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#232B36]">
-              <Button
-                type="submit"
-                disabled={saving || !selectedFinId || contasDoFinanceiro.length === 0}
-                className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold px-6 h-11 text-sm shadow-lg shadow-[#00D68F]/20 cursor-pointer"
-              >
-                {saving ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Gravando com Isolamento...
-                  </>
-                ) : (
-                  <>
-                    <PlusCircle className="w-4 h-4 mr-2" />
-                    Salvar e Lançar Próximo
-                  </>
-                )}
-              </Button>
+            <div className="flex flex-col items-end gap-2 pt-4 border-t border-[#232B36]">
+              <div className="flex items-center gap-3">
+                <Button
+                  type="submit"
+                  disabled={
+                    saving || !selectedFinId || contasDoFinanceiro.length === 0 || semPlanoContas
+                  }
+                  className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold px-6 h-11 text-sm shadow-lg shadow-[#00D68F]/20 cursor-pointer"
+                >
+                  {saving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Gravando com Isolamento...
+                    </>
+                  ) : (
+                    <>
+                      <PlusCircle className="w-4 h-4 mr-2" />
+                      Salvar e Lançar Próximo
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </form>
         </CardContent>
