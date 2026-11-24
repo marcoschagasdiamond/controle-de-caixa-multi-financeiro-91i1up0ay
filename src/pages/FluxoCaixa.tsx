@@ -59,8 +59,8 @@ export default function FluxoCaixaPage() {
 
   // Seletor de financeiro ou consolidado
   const [selectedFinId, setSelectedFinId] = useState<string>('consolidado')
-  // Horizonte de projeção: 30, 60 ou 90 dias
-  const [horizonte, setHorizonte] = useState<30 | 60 | 90>(30)
+  // Horizonte de projeção: 30, 60, 90 ou 180 dias
+  const [horizonte, setHorizonte] = useState<30 | 60 | 90 | 180>(30)
 
   // Financeiros visíveis ao usuário logado (master = todos; membro = só liberados)
   const { financeiros: finsAcesso } = useAcessoFinanceiros()
@@ -120,7 +120,7 @@ export default function FluxoCaixaPage() {
         }
       }
 
-      // 2. Construir lista diária para o horizonte (30, 60 ou 90 dias)
+      // 2. Construir lista diária para o horizonte (30, 60, 90 ou 180 dias)
       const dias: DiaFluxo[] = []
       let saldoAcumulado = saldoBase
       let sumEntradas = 0
@@ -302,9 +302,9 @@ export default function FluxoCaixaPage() {
             </select>
           </div>
 
-          {/* Horizonte 30/60/90 dias */}
+          {/* Horizonte 30/60/90/180 dias */}
           <div className="flex rounded-lg border border-[#232B36] p-0.5 bg-[#141A22]">
-            {([30, 60, 90] as const).map((h) => (
+            {([30, 60, 90, 180] as const).map((h) => (
               <button
                 key={h}
                 onClick={() => setHorizonte(h)}

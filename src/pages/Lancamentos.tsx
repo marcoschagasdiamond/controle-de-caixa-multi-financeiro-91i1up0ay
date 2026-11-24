@@ -42,7 +42,9 @@ import { useNavigate } from 'react-router-dom'
 import { baixarCSV, valorCSV } from '@/lib/csv'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import { dataUltimaParcela, mesPorExtenso } from '@/lib/recorrentes'
-import { CalendarClock, Repeat } from 'lucide-react'
+import { CalendarClock, Repeat, Pencil, X } from 'lucide-react'
+import TabelaAnualRecorrentes from '@/components/TabelaAnualRecorrentes'
+import { LancamentoRecorrente } from '@/types/financeiro'
 
 export default function LancamentosPage() {
   const { toast } = useToast()
@@ -53,8 +55,12 @@ export default function LancamentosPage() {
   const [contas, setContas] = useState<ContaBancaria[]>([])
   const [planos, setPlanos] = useState<PlanoConta[]>([])
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([])
+  const [recorrentes, setRecorrentes] = useState<LancamentoRecorrente[]>([])
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  // Edição: id do lançamento sendo editado (null = modo criação)
+  const [editandoId, setEditandoId] = useState<string | null>(null)
+  const [formTitle, setFormTitle] = useState('Novo Lançamento em 3 Passos')
 
   // Formulário em 3 Passos
   // Passo 1: Escolha do Financeiro
@@ -126,15 +132,17 @@ export default function LancamentosPage() {
   const carregarDados = async () => {
     try {
       setLoading(true)
-      const [cts, pls, lcs] = await Promise.all([
+      const [cts, pls, lcs, rcs] = await Promise.all([
         FinanceiroService.getContas(),
         FinanceiroService.getPlanoContas(),
         FinanceiroService.getLancamentos(),
+        FinanceiroService.getLancamentosRecorrentes(),
       ])
 
       setContas(cts)
       setPlanos(pls)
       setLancamentos(lcs)
+      setRecorrentes(rcs)
     } catch (err: any) {
       toast({
         variant: 'destructive',
@@ -158,8 +166,11 @@ export default function LancamentosPage() {
   }, [contas, selectedFinId])
 
   const planosDoFinanceiro = useMemo(() => {
+    // Em edição não filtramos pelo tipo do passo 2: garante que a categoria carregada
+    // do lançamento apareça no combobox mesmo que o usuário troque o tipo.
+    if (editandoId) return planos
     return planos.filter((p) => p.tipo === (tipoLancamento === 'credito' ? 'receita' : 'despesa'))
-  }, [planos, tipoLancamento])
+  }, [planos, tipoLancamento, editandoId])
 
   // Categoria escolhida no combobox (exibida no botão)
   const planoSelecionado = useMemo(
@@ -173,24 +184,65 @@ export default function LancamentosPage() {
 
   const semPlanoContas = !!selectedFinId && planosDoFinanceiroQualquerTipo.length === 0
 
-  // Atualiza selects padrão ao trocar financeiro ou tipo
+  // Atualiza selects padrão ao trocar financeiro ou tipo — exceto quando está editando
+  // (a conta e a categoria carregadas do lançamento devem permanecer).
   useEffect(() => {
+    if (editandoId) return
     if (contasDoFinanceiro.length > 0) {
       setSelectedContaId(contasDoFinanceiro[0].id)
     } else {
       setSelectedContaId('')
     }
-  }, [selectedFinId, contasDoFinanceiro])
+  }, [selectedFinId, contasDoFinanceiro, editandoId])
 
   useEffect(() => {
+    if (editandoId) return
     if (planosDoFinanceiro.length > 0) {
       setSelectedPlanoId(planosDoFinanceiro[0].id)
     } else {
       setSelectedPlanoId('')
     }
-  }, [selectedFinId, tipoLancamento, planosDoFinanceiro])
+  }, [selectedFinId, tipoLancamento, planosDoFinanceiro, editandoId])
 
-  // Salvar lançamento
+  // Inicia a edição: carrega o lançamento no formulário e rola até ele
+  const iniciarEdicao = (l: Lancamento) => {
+    setEditandoId(l.id)
+    setSelectedFinId(l.financeiro_id)
+    setTipoLancamento(l.tipo)
+    setDescricao(l.descricao)
+    setValor(String(l.valor).includes('.') ? String(l.valor) : String(l.valor))
+    setDataLancamento(l.data)
+    setStatusLancamento(l.status)
+    setContraparte(l.contraparte || '')
+    setDocumento(l.documento || '')
+    setObservacao(l.observacao || '')
+    // categoria e conta são fixados pelo usuário via selects (efeitos abaixo não sobrescrevem em edição)
+    setSelectedContaId(l.conta_id)
+    setSelectedPlanoId(l.plano_conta_id)
+    setTipoRecorrencia('nenhuma')
+    setTotalParcelas('')
+    setFormTitle(`Editando: ${l.descricao || 'lançamento'}`)
+    setFormError(null)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // Cancela a edição e volta ao modo de criação
+  const cancelarEdicao = () => {
+    setEditandoId(null)
+    setFormTitle('Novo Lançamento em 3 Passos')
+    setDescricao('')
+    setValor('')
+    setContraparte('')
+    setDocumento('')
+    setObservacao('')
+    setDataLancamento(getTodayISODate())
+    setStatusLancamento('realizado')
+    setTipoRecorrencia('nenhuma')
+    setTotalParcelas('')
+    setFormError(null)
+  }
+
+  // Salvar lançamento (criação ou edição do registro existente)
   const handleSalvarLancamento = async (e: React.FormEvent) => {
     e.preventDefault()
     setFormError(null)
@@ -223,6 +275,38 @@ export default function LancamentosPage() {
 
     try {
       setSaving(true)
+
+      // MODO EDIÇÃO: atualiza o registro existente (sem duplicar)
+      if (editandoId) {
+        const original = lancamentos.find((l) => l.id === editandoId)
+        await FinanceiroService.updateLancamento(editandoId, {
+          financeiro_id: selectedFinId,
+          conta_id: selectedContaId,
+          plano_conta_id: selectedPlanoId,
+          tipo: tipoLancamento,
+          valor: valorNum,
+          data: dataLancamento,
+          descricao: descricao.trim(),
+          status: statusLancamento,
+          contraparte: contraparte.trim() || null,
+          documento: documento.trim() || null,
+          observacao: observacao.trim() || null,
+          conciliado: original ? original.conciliado : false,
+          extrato_item_id: original ? (original.extrato_item_id ?? null) : null,
+        })
+        toast({
+          title: 'Lançamento atualizado com sucesso!',
+          description: `${tipoLancamento === 'credito' ? 'Entrada' : 'Saída'} de ${formatCurrency(
+            valorNum,
+          )} alterada em ${financeiros.find((f) => f.id === selectedFinId)?.nome}.`,
+        })
+        cancelarEdicao()
+        // Recarrega listagem
+        const novosLcs = await FinanceiroService.getLancamentos()
+        setLancamentos(novosLcs)
+        return
+      }
+
       await FinanceiroService.createLancamento({
         financeiro_id: selectedFinId,
         conta_id: selectedContaId,
@@ -440,11 +524,24 @@ export default function LancamentosPage() {
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-bold flex items-center gap-2 text-white">
               <PlusCircle className="w-5 h-5 text-[#00D68F]" />
-              Novo Lançamento em 3 Passos
+              {formTitle}
             </CardTitle>
-            <span className="text-xs text-gray-400 uppercase font-semibold">
-              Lançamento em Sequência Ativo
-            </span>
+            {editandoId ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={cancelarEdicao}
+                className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633]"
+              >
+                <X className="w-3.5 h-3.5 mr-1.5" />
+                Cancelar edição
+              </Button>
+            ) : (
+              <span className="text-xs text-gray-400 uppercase font-semibold">
+                Lançamento em Sequência Ativo
+              </span>
+            )}
           </div>
         </CardHeader>
         <CardContent className="pt-6 space-y-6">
@@ -913,6 +1010,11 @@ export default function LancamentosPage() {
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       Gravando com Isolamento...
                     </>
+                  ) : editandoId ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 mr-2" />
+                      Salvar Alterações
+                    </>
                   ) : (
                     <>
                       <PlusCircle className="w-4 h-4 mr-2" />
@@ -1138,8 +1240,17 @@ export default function LancamentosPage() {
                         </td>
                         <td className="py-3 px-4 text-center whitespace-nowrap">
                           <button
+                            onClick={() => iniciarEdicao(item)}
+                            title="Editar Lançamento"
+                            aria-label={`Editar lançamento ${item.descricao || item.data}`}
+                            className="p-1.5 text-gray-500 hover:text-[#00D68F] hover:bg-[#00D68F]/10 rounded transition-colors cursor-pointer mr-1"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
                             onClick={() => handleExcluirLancamento(item.id)}
                             title="Excluir Lançamento"
+                            aria-label={`Excluir lançamento ${item.descricao || item.data}`}
                             className="p-1.5 text-gray-500 hover:text-[#FF5C5C] hover:bg-[#FF5C5C]/10 rounded transition-colors cursor-pointer"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1154,6 +1265,13 @@ export default function LancamentosPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* TABELA ANUAL: recorrentes e parcelados, jan–dez do ano corrente */}
+      <TabelaAnualRecorrentes
+        recorrentes={recorrentes}
+        lancamentos={lancamentos}
+        financeiros={financeiros}
+      />
     </div>
   )
 }

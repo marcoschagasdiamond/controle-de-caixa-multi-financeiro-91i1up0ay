@@ -33,8 +33,8 @@ export default function NecessidadeCaixaPage() {
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Horizonte: 30, 60 ou 90 dias
-  const [horizonte, setHorizonte] = useState<30 | 60 | 90>(30)
+  // Horizonte: 30, 60, 90 ou 180 dias
+  const [horizonte, setHorizonte] = useState<30 | 60 | 90 | 180>(30)
 
   const carregarDados = async () => {
     try {
@@ -81,7 +81,7 @@ export default function NecessidadeCaixaPage() {
       }
     }
 
-    // 2. Análise dia a dia para os próximos 30/60/90 dias
+    // 2. Análise dia a dia para os próximos 30/60/90/180 dias
     let saldoAcumulado = saldoAtual
     let sumSaidas = 0
     let sumEntradas = 0
@@ -222,11 +222,11 @@ export default function NecessidadeCaixaPage() {
           </p>
         </div>
 
-        {/* Horizonte 30/60/90 */}
+        {/* Horizonte 30/60/90/180 */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-gray-400 uppercase font-bold">Horizonte:</span>
           <div className="flex rounded-lg border border-[#232B36] p-0.5 bg-[#141A22]">
-            {([30, 60, 90] as const).map((h) => (
+            {([30, 60, 90, 180] as const).map((h) => (
               <button
                 key={h}
                 onClick={() => setHorizonte(h)}
