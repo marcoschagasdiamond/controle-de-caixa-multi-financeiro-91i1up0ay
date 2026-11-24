@@ -195,6 +195,51 @@ export type Database = {
           },
         ]
       }
+      equipe_membros: {
+        Row: {
+          created_at: string
+          financeiro_id: string
+          id: string
+          member_user_id: string
+          owner_user_id: string
+          papel: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          financeiro_id: string
+          id?: string
+          member_user_id: string
+          owner_user_id: string
+          papel?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          financeiro_id?: string
+          id?: string
+          member_user_id?: string
+          owner_user_id?: string
+          papel?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'equipe_membros_financeiro_id_fkey'
+            columns: ['financeiro_id']
+            isOneToOne: false
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'equipe_membros_financeiro_id_fkey'
+            columns: ['financeiro_id']
+            isOneToOne: false
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
+          },
+        ]
+      }
       extrato_itens: {
         Row: {
           conta_id: string
@@ -642,7 +687,7 @@ export type Database = {
           codigo: string
           created_at: string
           descricao: string
-          financeiro_id: string
+          financeiro_id: string | null
           id: string
           tipo: string
           user_id: string
@@ -652,7 +697,7 @@ export type Database = {
           codigo: string
           created_at?: string
           descricao: string
-          financeiro_id: string
+          financeiro_id?: string | null
           id?: string
           tipo: string
           user_id: string
@@ -662,7 +707,7 @@ export type Database = {
           codigo?: string
           created_at?: string
           descricao?: string
-          financeiro_id?: string
+          financeiro_id?: string | null
           id?: string
           tipo?: string
           user_id?: string
@@ -756,7 +801,10 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      usuario_pode_acessar_financeiro: {
+        Args: { p_financeiro_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

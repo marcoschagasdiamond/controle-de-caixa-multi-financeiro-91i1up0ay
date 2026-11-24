@@ -29,6 +29,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { useNavigate } from 'react-router-dom'
 import { baixarCSV, valorCSV } from '@/lib/csv'
+import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 
 export default function LancamentosPage() {
   const { toast } = useToast()
@@ -70,26 +71,30 @@ export default function LancamentosPage() {
   const [filtroDataInicio, setFiltroDataInicio] = useState('')
   const [filtroDataFim, setFiltroDataFim] = useState('')
 
+  // Financeiros visíveis ao usuário logado (master = todos; membro = só liberados)
+  const { financeiros: finsAcesso } = useAcessoFinanceiros()
+
+  // Pré-selecionar o primeiro financeiro acessível caso não haja seleção
+  useEffect(() => {
+    setFinanceiros(finsAcesso)
+    if (finsAcesso.length > 0 && !selectedFinId) {
+      setSelectedFinId(finsAcesso[0].id)
+    }
+  }, [finsAcesso, selectedFinId])
+
   // Carregar dados iniciais
   const carregarDados = async () => {
     try {
       setLoading(true)
-      const [fins, cts, pls, lcs] = await Promise.all([
-        FinanceiroService.getFinanceiros(),
+      const [cts, pls, lcs] = await Promise.all([
         FinanceiroService.getContas(),
         FinanceiroService.getPlanoContas(),
         FinanceiroService.getLancamentos(),
       ])
 
-      setFinanceiros(fins)
       setContas(cts)
       setPlanos(pls)
       setLancamentos(lcs)
-
-      // Pré-selecionar o primeiro financeiro caso não haja seleção
-      if (fins.length > 0 && !selectedFinId) {
-        setSelectedFinId(fins[0].id)
-      }
     } catch (err: any) {
       toast({
         variant: 'destructive',
@@ -105,28 +110,20 @@ export default function LancamentosPage() {
     carregarDados()
   }, [])
 
-  // FILTRAGEM RIGOROSA DE SEGREGAÇÃO PATRIMONIAL:
-  // As listas de contas e plano de contas mostram SOMENTE os do financeiro selecionado!
+  // SEGREGAÇÃO PATRIMONIAL: as contas mostram SOMENTE as do financeiro selecionado.
+  // O plano de contas é GLOBAL: todas as categorias aparecem, independente do financeiro.
   const contasDoFinanceiro = useMemo(() => {
     if (!selectedFinId) return []
     return contas.filter((c) => c.financeiro_id === selectedFinId)
   }, [contas, selectedFinId])
 
   const planosDoFinanceiro = useMemo(() => {
-    if (!selectedFinId) return []
-    return planos.filter(
-      (p) =>
-        p.financeiro_id === selectedFinId &&
-        p.tipo === (tipoLancamento === 'credito' ? 'receita' : 'despesa'),
-    )
-  }, [planos, selectedFinId, tipoLancamento])
+    return planos.filter((p) => p.tipo === (tipoLancamento === 'credito' ? 'receita' : 'despesa'))
+  }, [planos, tipoLancamento])
 
-  // Todas as categorias do financeiro selecionado, de qualquer tipo (receita/despesa).
-  // Usado para detectar o caso "financeiro sem NENHUM plano de contas".
-  const planosDoFinanceiroQualquerTipo = useMemo(() => {
-    if (!selectedFinId) return []
-    return planos.filter((p) => p.financeiro_id === selectedFinId)
-  }, [planos, selectedFinId])
+  // Todas as categorias globais, de qualquer tipo (receita/despesa).
+  // Usado para detectar o caso "plano de contas vazio".
+  const planosDoFinanceiroQualquerTipo = useMemo(() => planos, [planos])
 
   const semPlanoContas = !!selectedFinId && planosDoFinanceiroQualquerTipo.length === 0
 
@@ -404,6 +401,7 @@ export default function LancamentosPage() {
                   <button
                     key={f.id}
                     type="button"
+                    aria-label={`Selecionar financeiro ${f.nome}`}
                     onClick={() => {
                       setSelectedFinId(f.id)
                       setFormError(null)

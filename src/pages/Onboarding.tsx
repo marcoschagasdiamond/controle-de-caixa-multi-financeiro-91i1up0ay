@@ -470,6 +470,7 @@ export default function Onboarding() {
                           <button
                             key={c}
                             type="button"
+                            aria-label={`Escolher cor ${c}`}
                             onClick={() => setFinCor(c)}
                             className="w-6 h-6 rounded-full border border-white/20 transition-transform hover:scale-110 cursor-pointer"
                             style={{ backgroundColor: c }}
@@ -770,7 +771,6 @@ export default function Onboarding() {
                   setPlanos([
                     ...planos,
                     {
-                      financeiro_id: financeiroId || '',
                       codigo: `2.0${planos.length + 1}`,
                       descricao: '',
                       tipo: 'despesa',

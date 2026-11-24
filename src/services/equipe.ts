@@ -58,10 +58,10 @@ export const EquipeService = {
     }
 
     // E-mails não são legíveis de auth.users pelo client público; o master
-    // conhece os e-mails que convidou. Tentamos a view, se existir.
+    // conhece os e-mails que convidou. Tentamos a RPC, se existir.
     try {
-      const { data: emails } = await supabase.rpc('equipe_emails_membros')
-      if (emails) {
+      const { data: emails, error: errRpc } = await (supabase as any).rpc('equipe_emails_membros')
+      if (!errRpc && emails) {
         for (const e of emails as { user_id: string; email: string }[]) {
           const m = porMembro.get(e.user_id)
           if (m) m.email = e.email

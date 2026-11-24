@@ -133,8 +133,8 @@ export function AlertaContasFixas({
       return
     }
 
-    // plano de contas: o associado à conta fixa ou o primeiro de despesa do financeiro
-    const planos = await FinanceiroService.getPlanoContas(cf.financeiro_id)
+    // plano de contas GLOBAL: o associado à conta fixa ou o primeiro de despesa ativo
+    const planos = await FinanceiroService.getPlanoContas()
     const plano = cf.plano_conta_id
       ? planos.find((p) => p.id === cf.plano_conta_id) ||
         planos.find((p) => p.tipo === 'despesa' && p.ativo)
@@ -144,7 +144,7 @@ export function AlertaContasFixas({
         variant: 'destructive',
         title: 'Plano de contas não configurado',
         description:
-          'Cadastre uma categoria de despesa no Plano de Contas deste financeiro em Configurações antes de registrar o pagamento.',
+          'Cadastre uma categoria de despesa no Plano de Contas (global) em Configurações antes de registrar o pagamento.',
       })
       return
     }

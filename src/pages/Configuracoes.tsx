@@ -37,6 +37,7 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAuth } from '@/hooks/use-auth'
+import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import RelatorioContas from '@/components/RelatorioContas'
 import AbaEquipe from '@/components/AbaEquipe'
 
@@ -56,6 +57,8 @@ function lerFiltroSalvo(chave: string): string {
 export default function ConfiguracoesPage() {
   const { toast } = useToast()
   const { user } = useAuth()
+  // Apenas o master (dono) vê a aba Equipe
+  const { isMaster } = useAcessoFinanceiros()
   const [searchParams] = useSearchParams()
   const TABS_VALIDAS = [
     'financeiros',
@@ -66,9 +69,8 @@ export default function ConfiguracoesPage() {
     'relatorio',
     'equipe',
   ]
-  const initialTab = TABS_VALIDAS.includes(searchParams.get('tab') || '')
-    ? (searchParams.get('tab') as string)
-    : 'financeiros'
+  const tabUrl = searchParams.get('tab') || ''
+  const initialTab = TABS_VALIDAS.includes(tabUrl) ? tabUrl : 'financeiros'
 
   const [activeTab, setActiveTab] = useState(initialTab)
   const [financeiros, setFinanceiros] = useState<Financeiro[]>([])
@@ -180,6 +182,11 @@ export default function ConfiguracoesPage() {
       setLoading(false)
     }
   }
+
+  // Membro que cair em ?tab=equipe volta para a primeira aba (sem acesso)
+  useEffect(() => {
+    if (!isMaster && activeTab === 'equipe') setActiveTab('financeiros')
+  }, [isMaster, activeTab])
 
   useEffect(() => {
     carregarTudo()
@@ -586,7 +593,7 @@ export default function ConfiguracoesPage() {
             <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
             Relatório de Contas
           </TabsTrigger>
-          {user && (
+          {user && isMaster && (
             <TabsTrigger
               value="equipe"
               className="data-[state=active]:bg-[#00D68F] data-[state=active]:text-[#0B0F14] text-xs font-semibold"
@@ -972,22 +979,7 @@ export default function ConfiguracoesPage() {
             </CardHeader>
             <CardContent className="pt-4">
               <form onSubmit={handleCriarPlano} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <div>
-                    <Label className="text-xs text-gray-400">Financeiro *</Label>
-                    <select
-                      value={planoFinId}
-                      onChange={(e) => setPlanoFinId(e.target.value)}
-                      className="w-full h-9 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
-                    >
-                      {financeiros.map((f) => (
-                        <option key={f.id} value={f.id}>
-                          {f.nome} ({f.tipo})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <div>
                     <Label className="text-xs text-gray-400">Código Contábil</Label>
                     <Input
@@ -1041,7 +1033,6 @@ export default function ConfiguracoesPage() {
             <table className="w-full text-left text-sm text-gray-300">
               <thead className="bg-[#0B0F14] border-b border-[#232B36] text-xs text-gray-400 uppercase tracking-wider font-semibold sticky top-0">
                 <tr>
-                  <th className="py-3 px-4">Financeiro</th>
                   <th className="py-3 px-4">Código</th>
                   <th className="py-3 px-4">Descrição</th>
                   <th className="py-3 px-4">Tipo</th>
@@ -1050,10 +1041,8 @@ export default function ConfiguracoesPage() {
               </thead>
               <tbody className="divide-y divide-[#232B36]">
                 {planos.map((p) => {
-                  const fin = financeiros.find((f) => f.id === p.financeiro_id)
                   return (
                     <tr key={p.id} className="hover:bg-[#1A222D]/40">
-                      <td className="py-2.5 px-4 font-semibold text-white">{fin?.nome || '-'}</td>
                       <td className="py-2.5 px-4 font-mono text-xs text-gray-400">{p.codigo}</td>
                       <td className="py-2.5 px-4 text-white font-medium">{p.descricao}</td>
                       <td className="py-2.5 px-4">
@@ -1517,6 +1506,13 @@ export default function ConfiguracoesPage() {
             onRecarregar={carregarTudo}
           />
         </TabsContent>
+
+        {/* TAB EQUIPE: convite de usuários e permissão por financeiro (só master) */}
+        {user && isMaster && (
+          <TabsContent value="equipe" className="space-y-6 mt-4">
+            <AbaEquipe financeiros={financeiros} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   )

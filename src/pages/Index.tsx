@@ -32,6 +32,7 @@ import {
   RefreshCw,
   LineChart,
 } from 'lucide-react'
+import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import {
   ResponsiveContainer,
   BarChart,
@@ -58,18 +59,24 @@ export default function Index() {
   // Filtro de financeiro ou consolidado no Painel
   const [selectedFinId, setSelectedFinId] = useState<string>('todos')
 
+  // Financeiros visíveis ao usuário logado (master = todos; membro = só liberados)
+  const { financeiros: finsAcesso, loading: loadingAcesso } = useAcessoFinanceiros()
+
+  useEffect(() => {
+    setFinanceiros(finsAcesso)
+    if (!loadingAcesso && finsAcesso.length === 0) setLoading(false)
+  }, [finsAcesso, loadingAcesso])
+
   const carregarPainel = async () => {
     try {
       setLoading(true)
-      const [fins, cts, lcs, ext, cfs, recs] = await Promise.all([
-        FinanceiroService.getFinanceiros(),
+      const [cts, lcs, ext, cfs, recs] = await Promise.all([
         FinanceiroService.getContas(),
         FinanceiroService.getLancamentos(),
         FinanceiroService.getExtratoItens(),
         FinanceiroService.getContasFixas(),
         FinanceiroService.getLancamentosRecorrentes(),
       ])
-      setFinanceiros(fins)
       setContas(cts)
       setLancamentos(lcs)
       setExtratoItens(ext)

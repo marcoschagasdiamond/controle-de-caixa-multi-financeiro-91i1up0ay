@@ -19,6 +19,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 
 // Interface para as linhas da tabela de Budget
 interface LinhaBudgetItem {
@@ -51,22 +52,26 @@ export default function BudgetPage() {
   const [editValue, setEditValue] = useState<string>('')
   const [savingCell, setSavingCell] = useState(false)
 
+  // Financeiros visíveis ao usuário logado (master = todos; membro = só liberados)
+  const { financeiros: finsAcesso } = useAcessoFinanceiros()
+
+  useEffect(() => {
+    setFinanceiros(finsAcesso)
+    if (finsAcesso.length > 0 && !selectedFinId) {
+      setSelectedFinId(finsAcesso[0].id)
+    }
+  }, [finsAcesso, selectedFinId])
+
   const carregarDadosIniciais = async () => {
     try {
       setLoading(true)
-      const [fins, pls, lcs] = await Promise.all([
-        FinanceiroService.getFinanceiros(),
+      const [pls, lcs] = await Promise.all([
         FinanceiroService.getPlanoContas(),
         FinanceiroService.getLancamentos(),
       ])
 
-      setFinanceiros(fins)
       setPlanos(pls)
       setLancamentos(lcs)
-
-      if (fins.length > 0 && !selectedFinId) {
-        setSelectedFinId(fins[0].id)
-      }
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro ao carregar dados', description: err.message })
     } finally {
@@ -95,11 +100,10 @@ export default function BudgetPage() {
     }
   }, [selectedFinId, selectedMes])
 
-  // Plano de contas do financeiro selecionado
+  // Plano de contas GLOBAL: todas as categorias ativas, independente do financeiro
   const planosDoFin = useMemo(() => {
-    if (!selectedFinId) return []
-    return planos.filter((p) => p.financeiro_id === selectedFinId && p.ativo)
-  }, [planos, selectedFinId])
+    return planos.filter((p) => p.ativo)
+  }, [planos])
 
   // Cálculo por Plano de Contas: Orçado, Realizado, Variação R$ e %
   const linhasBudget = useMemo(() => {

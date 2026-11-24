@@ -26,6 +26,7 @@ import {
   Download,
   Printer,
 } from 'lucide-react'
+import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -61,17 +62,22 @@ export default function FluxoCaixaPage() {
   // Horizonte de projeção: 30, 60 ou 90 dias
   const [horizonte, setHorizonte] = useState<30 | 60 | 90>(30)
 
+  // Financeiros visíveis ao usuário logado (master = todos; membro = só liberados)
+  const { financeiros: finsAcesso } = useAcessoFinanceiros()
+
+  useEffect(() => {
+    setFinanceiros(finsAcesso)
+  }, [finsAcesso])
+
   const carregarDados = async () => {
     try {
       setLoading(true)
-      const [fins, cts, cfs, rcs, lcs] = await Promise.all([
-        FinanceiroService.getFinanceiros(),
+      const [cts, cfs, rcs, lcs] = await Promise.all([
         FinanceiroService.getContas(),
         FinanceiroService.getContasFixas(),
         FinanceiroService.getLancamentosRecorrentes(),
         FinanceiroService.getLancamentos(),
       ])
-      setFinanceiros(fins)
       setContas(cts)
       setContasFixas(cfs)
       setRecorrentes(rcs)
