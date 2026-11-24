@@ -1,8 +1,14 @@
 import React, { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FinanceiroService } from '@/services/financeiro'
-import { Financeiro, ContaBancaria, PlanoConta, ContaFixa } from '@/types/financeiro'
-import { formatCurrency } from '@/lib/formatters'
+import {
+  Financeiro,
+  ContaBancaria,
+  PlanoConta,
+  ContaFixa,
+  LancamentoRecorrente,
+} from '@/types/financeiro'
+import { formatCurrency, getTodayISODate } from '@/lib/formatters'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,9 +21,12 @@ import {
   Wallet,
   BookOpen,
   CalendarClock,
+  Repeat,
   Plus,
   Trash2,
   Edit2,
+  PowerOff,
+  Power,
   CheckCircle2,
   AlertTriangle,
   Loader2,
@@ -44,7 +53,10 @@ function lerFiltroSalvo(chave: string): string {
 export default function ConfiguracoesPage() {
   const { toast } = useToast()
   const [searchParams] = useSearchParams()
-  const initialTab = searchParams.get('tab') || 'financeiros'
+  const TABS_VALIDAS = ['financeiros', 'contas', 'plano', 'fixas', 'recorrentes', 'relatorio']
+  const initialTab = TABS_VALIDAS.includes(searchParams.get('tab') || '')
+    ? (searchParams.get('tab') as string)
+    : 'financeiros'
 
   const [activeTab, setActiveTab] = useState(initialTab)
   const [financeiros, setFinanceiros] = useState<Financeiro[]>([])
@@ -112,24 +124,41 @@ export default function ConfiguracoesPage() {
   const [fixaTipo, setFixaTipo] = useState<'receita' | 'despesa'>('despesa')
   const [savingFixa, setSavingFixa] = useState(false)
 
+  // 5. Lançamentos Recorrentes
+  const [recorrentes, setRecorrentes] = useState<LancamentoRecorrente[]>([])
+  const [recFinId, setRecFinId] = useState('')
+  const [recContaId, setRecContaId] = useState('')
+  const [recPlanoId, setRecPlanoId] = useState('')
+  const [recDesc, setRecDesc] = useState('')
+  const [recValor, setRecValor] = useState('0')
+  const [recDia, setRecDia] = useState('10')
+  const [recTipo, setRecTipo] = useState<'credito' | 'debito'>('debito')
+  const [savingRec, setSavingRec] = useState(false)
+  const [editingRecId, setEditingRecId] = useState<string | null>(null)
+  const [togglingRecId, setTogglingRecId] = useState<string | null>(null)
+  const [recPlanoFiltrado, setRecPlanoFiltrado] = useState<PlanoConta[]>([])
+
   const carregarTudo = async () => {
     try {
       setLoading(true)
-      const [fins, cts, pls, cfs] = await Promise.all([
+      const [fins, cts, pls, cfs, recs] = await Promise.all([
         FinanceiroService.getFinanceiros(),
         FinanceiroService.getContas(),
         FinanceiroService.getPlanoContas(),
         FinanceiroService.getContasFixas(),
+        FinanceiroService.getLancamentosRecorrentes(),
       ])
       setFinanceiros(fins)
       setContas(cts)
       setPlanos(pls)
       setContasFixas(cfs)
+      setRecorrentes(recs)
 
       if (fins.length > 0) {
         if (!ctaFinId) setCtaFinId(fins[0].id)
         if (!planoFinId) setPlanoFinId(fins[0].id)
         if (!fixaFinId) setFixaFinId(fins[0].id)
+        if (!recFinId) setRecFinId(fins[0].id)
       }
     } catch (err: any) {
       toast({
@@ -341,6 +370,109 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  // ===== LANÇAMENTOS RECORRENTES =====
+  const limparFormRecorrente = () => {
+    setEditingRecId(null)
+    setRecContaId('')
+    setRecPlanoId('')
+    setRecDesc('')
+    setRecValor('0')
+    setRecDia('10')
+    setRecTipo('debito')
+  }
+
+  // Planos de contas do financeiro selecionado (para os selects do formulário e da edição)
+  useEffect(() => {
+    if (!recFinId) {
+      setRecPlanoFiltrado([])
+      return
+    }
+    setRecPlanoFiltrado(planos.filter((p) => p.financeiro_id === recFinId))
+  }, [recFinId, planos])
+
+  const iniciarEdicaoRecorrente = (r: LancamentoRecorrente) => {
+    setEditingRecId(r.id)
+    setRecFinId(r.financeiro_id)
+    setRecContaId(r.conta_id)
+    setRecPlanoId(r.plano_conta_id)
+    setRecDesc(r.descricao)
+    setRecValor(String(r.valor))
+    setRecDia(String(r.dia_mes))
+    setRecTipo(r.tipo)
+  }
+
+  const handleSalvarRecorrente = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!recFinId || !recContaId || !recPlanoId || !recDesc.trim()) return
+    try {
+      setSavingRec(true)
+      const payload = {
+        financeiro_id: recFinId,
+        conta_id: recContaId,
+        plano_conta_id: recPlanoId,
+        descricao: recDesc.trim(),
+        valor: parseFloat(recValor) || 0,
+        dia_mes: parseInt(recDia, 10) || 10,
+        tipo: recTipo,
+        status: 'previsto' as const,
+      }
+      if (editingRecId) {
+        await FinanceiroService.updateLancamentoRecorrente(editingRecId, payload)
+        toast({ title: 'Lançamento recorrente atualizado com sucesso!' })
+      } else {
+        await FinanceiroService.createLancamentoRecorrente({
+          ...payload,
+          data_inicial: getTodayISODate(),
+          ativo: true,
+        })
+        toast({ title: 'Lançamento recorrente cadastrado com sucesso!' })
+      }
+      limparFormRecorrente()
+      await carregarTudo()
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: editingRecId ? 'Erro ao atualizar recorrente' : 'Erro ao criar recorrente',
+        description: err.message,
+      })
+    } finally {
+      setSavingRec(false)
+    }
+  }
+
+  const handleToggleAtivoRecorrente = async (r: LancamentoRecorrente) => {
+    try {
+      setTogglingRecId(r.id)
+      await FinanceiroService.updateLancamentoRecorrente(r.id, { ativo: !r.ativo })
+      toast({
+        title: r.ativo ? 'Recorrente desativado.' : 'Recorrente ativado.',
+        description: r.ativo
+          ? 'Ele deixa de aparecer no saldo projetado e nos próximos vencimentos.'
+          : 'Voltou a entrar na projeção de caixa.',
+      })
+      await carregarTudo()
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro ao alterar status', description: err.message })
+    } finally {
+      setTogglingRecId(null)
+    }
+  }
+
+  const handleExcluirRecorrente = async (id: string) => {
+    if (!window.confirm('Confirmar exclusão definitiva deste lançamento recorrente?')) return
+    try {
+      await FinanceiroService.deleteLancamentoRecorrente(id)
+      toast({ title: 'Recorrente excluído.' })
+      await carregarTudo()
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao excluir recorrente',
+        description: err.message,
+      })
+    }
+  }
+
   // Exporta as contas visíveis (respeitando filtros) em CSV pt-BR (BOM + separador ';')
   const handleExportarContasCSV = () => {
     if (contasFiltradas.length === 0) {
@@ -434,6 +566,13 @@ export default function ConfiguracoesPage() {
           >
             <CalendarClock className="w-3.5 h-3.5 mr-1.5" />
             4. Contas Fixas ({contasFixas.length})
+          </TabsTrigger>
+          <TabsTrigger
+            value="recorrentes"
+            className="data-[state=active]:bg-[#00D68F] data-[state=active]:text-[#0B0F14] text-xs font-semibold"
+          >
+            <Repeat className="w-3.5 h-3.5 mr-1.5" />
+            5. Recorrentes ({recorrentes.length})
           </TabsTrigger>
           <TabsTrigger
             value="relatorio"
@@ -1096,6 +1235,251 @@ export default function ConfiguracoesPage() {
                       <td className="py-2.5 px-4 text-center">
                         <button
                           onClick={() => handleExcluirFixa(cf.id)}
+                          className="p-1 text-gray-500 hover:text-[#FF5C5C] cursor-pointer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </TabsContent>
+
+        {/* TAB 5: LANÇAMENTOS RECORRENTES */}
+        <TabsContent value="recorrentes" className="space-y-6 mt-4">
+          <Card className="bg-[#141A22] border-[#232B36] text-white">
+            <CardHeader className="pb-3 border-b border-[#232B36]">
+              <CardTitle className="text-base text-white flex items-center gap-2">
+                <Repeat className="w-4 h-4 text-[#00D68F]" />
+                {editingRecId
+                  ? 'Editar Lançamento Recorrente'
+                  : 'Cadastrar Lançamento Recorrente Mensal'}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4">
+              <form onSubmit={handleSalvarRecorrente} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <Label className="text-xs text-gray-400">Financeiro *</Label>
+                    <select
+                      value={recFinId}
+                      onChange={(e) => {
+                        setRecFinId(e.target.value)
+                        setRecContaId('')
+                        setRecPlanoId('')
+                      }}
+                      className="w-full h-9 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
+                    >
+                      {financeiros.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.nome} ({f.tipo})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs text-gray-400">Conta Bancária *</Label>
+                    <select
+                      value={recContaId}
+                      onChange={(e) => setRecContaId(e.target.value)}
+                      className="w-full h-9 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
+                    >
+                      <option value="">Selecione uma conta</option>
+                      {contas
+                        .filter((c) => c.financeiro_id === recFinId)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.banco} - {c.conta}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs text-gray-400">Plano de Contas *</Label>
+                    <select
+                      value={recPlanoId}
+                      onChange={(e) => setRecPlanoId(e.target.value)}
+                      className="w-full h-9 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
+                    >
+                      <option value="">Selecione uma categoria</option>
+                      {recPlanoFiltrado.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.codigo} - {p.descricao} ({p.tipo})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <Label className="text-xs text-gray-400">Descrição *</Label>
+                    <Input
+                      required
+                      value={recDesc}
+                      onChange={(e) => setRecDesc(e.target.value)}
+                      placeholder="Ex: Salário, Aluguel, Internet"
+                      className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-xs text-gray-400">Valor (R$)</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={recValor}
+                      onChange={(e) => setRecValor(e.target.value)}
+                      className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-xs text-gray-400">Dia do Mês (1 a 31)</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={recDia}
+                      onChange={(e) => setRecDia(e.target.value)}
+                      className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
+                    />
+                  </div>
+
+                  <div>
+                    <Label className="text-xs text-gray-400">Tipo</Label>
+                    <select
+                      value={recTipo}
+                      onChange={(e) => setRecTipo(e.target.value as any)}
+                      className="w-full h-9 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
+                    >
+                      <option value="debito">Débito (saída)</option>
+                      <option value="credito">Crédito (entrada)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  {editingRecId && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={limparFormRecorrente}
+                      className="border-[#232B36] text-gray-300 hover:text-white text-xs h-9 cursor-pointer"
+                    >
+                      Cancelar edição
+                    </Button>
+                  )}
+                  <Button
+                    type="submit"
+                    disabled={savingRec}
+                    className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold text-xs h-9 cursor-pointer"
+                  >
+                    {editingRecId ? 'Atualizar Recorrente' : 'Salvar Recorrente'}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+
+          {/* Listagem */}
+          <div className="overflow-x-auto bg-[#141A22] border border-[#232B36] rounded-xl">
+            <table className="w-full text-left text-sm text-gray-300">
+              <thead className="bg-[#0B0F14] border-b border-[#232B36] text-xs text-gray-400 uppercase tracking-wider font-semibold">
+                <tr>
+                  <th className="py-3 px-4">Financeiro</th>
+                  <th className="py-3 px-4">Descrição</th>
+                  <th className="py-3 px-4">Conta / Categoria</th>
+                  <th className="py-3 px-4 text-center">Dia</th>
+                  <th className="py-3 px-4 text-right">Valor</th>
+                  <th className="py-3 px-4 text-center">Tipo</th>
+                  <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4 text-center">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#232B36]">
+                {recorrentes.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="py-8 px-4 text-center text-sm text-gray-500">
+                      Nenhum lançamento recorrente cadastrado ainda.
+                    </td>
+                  </tr>
+                )}
+                {recorrentes.map((r) => {
+                  const fin = financeiros.find((f) => f.id === r.financeiro_id)
+                  const conta = contas.find((c) => c.id === r.conta_id)
+                  const plano = planos.find((p) => p.id === r.plano_conta_id)
+                  return (
+                    <tr
+                      key={r.id}
+                      className={`hover:bg-[#1A222D]/40 ${!r.ativo ? 'opacity-50' : ''}`}
+                    >
+                      <td className="py-2.5 px-4 font-semibold text-white">{fin?.nome || '-'}</td>
+                      <td className="py-2.5 px-4 text-white font-medium">{r.descricao}</td>
+                      <td className="py-2.5 px-4 text-xs">
+                        <div>{conta ? `${conta.banco} - ${conta.conta}` : '-'}</div>
+                        <div className="text-[11px] text-gray-500">
+                          {plano ? `${plano.codigo} - ${plano.descricao}` : 'Sem categoria'}
+                        </div>
+                      </td>
+                      <td className="py-2.5 px-4 text-center font-mono text-xs text-amber-400">
+                        Dia {r.dia_mes}
+                      </td>
+                      <td className="py-2.5 px-4 text-right font-mono font-bold text-white">
+                        {formatCurrency(r.valor)}
+                      </td>
+                      <td className="py-2.5 px-4 text-center">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${
+                            r.tipo === 'credito'
+                              ? 'text-[#00D68F] border-[#00D68F]/30'
+                              : 'text-[#FF5C5C] border-[#FF5C5C]/30'
+                          }`}
+                        >
+                          {r.tipo === 'credito' ? 'Crédito' : 'Débito'}
+                        </Badge>
+                      </td>
+                      <td className="py-2.5 px-4 text-center">
+                        <Badge
+                          variant="outline"
+                          className={`text-[10px] ${
+                            r.ativo
+                              ? 'text-[#00D68F] border-[#00D68F]/30'
+                              : 'text-gray-400 border-[#232B36]'
+                          }`}
+                        >
+                          {r.ativo ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                      </td>
+                      <td className="py-2.5 px-4 text-center">
+                        <button
+                          onClick={() => iniciarEdicaoRecorrente(r)}
+                          title="Editar recorrente"
+                          className="p-1 text-gray-500 hover:text-[#00D68F] cursor-pointer mr-1"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleToggleAtivoRecorrente(r)}
+                          disabled={togglingRecId === r.id}
+                          title={r.ativo ? 'Desativar recorrente' : 'Ativar recorrente'}
+                          className="p-1 text-gray-500 hover:text-amber-400 cursor-pointer mr-1 disabled:opacity-40"
+                        >
+                          {togglingRecId === r.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : r.ativo ? (
+                            <PowerOff className="w-4 h-4" />
+                          ) : (
+                            <Power className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => handleExcluirRecorrente(r.id)}
+                          title="Excluir recorrente"
                           className="p-1 text-gray-500 hover:text-[#FF5C5C] cursor-pointer"
                         >
                           <Trash2 className="w-4 h-4" />

@@ -1,8 +1,17 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { FinanceiroService } from '@/services/financeiro'
-import { Financeiro, ContaBancaria, Lancamento, ExtratoItem, ContaFixa } from '@/types/financeiro'
+import {
+  Financeiro,
+  ContaBancaria,
+  Lancamento,
+  ExtratoItem,
+  ContaFixa,
+  LancamentoRecorrente,
+} from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
+import { CalendarClock, TrendingDown } from 'lucide-react'
+import { projetarSaldo30Dias, ocorrenciasRecorrentes } from '@/lib/projecao'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -43,6 +52,7 @@ export default function Index() {
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([])
   const [extratoItens, setExtratoItens] = useState<ExtratoItem[]>([])
   const [contasFixas, setContasFixas] = useState<ContaFixa[]>([])
+  const [recorrentes, setRecorrentes] = useState<LancamentoRecorrente[]>([])
   const [loading, setLoading] = useState(true)
 
   // Filtro de financeiro ou consolidado no Painel
@@ -51,18 +61,20 @@ export default function Index() {
   const carregarPainel = async () => {
     try {
       setLoading(true)
-      const [fins, cts, lcs, ext, cfs] = await Promise.all([
+      const [fins, cts, lcs, ext, cfs, recs] = await Promise.all([
         FinanceiroService.getFinanceiros(),
         FinanceiroService.getContas(),
         FinanceiroService.getLancamentos(),
         FinanceiroService.getExtratoItens(),
         FinanceiroService.getContasFixas(),
+        FinanceiroService.getLancamentosRecorrentes(),
       ])
       setFinanceiros(fins)
       setContas(cts)
       setLancamentos(lcs)
       setExtratoItens(ext)
       setContasFixas(cfs)
+      setRecorrentes(recs)
     } catch (err) {
       console.error('Erro ao carregar painel:', err)
     } finally {
@@ -87,6 +99,11 @@ export default function Index() {
     if (selectedFinId === 'todos') return lancamentos
     return lancamentos.filter((l) => l.financeiro_id === selectedFinId)
   }, [lancamentos, selectedFinId])
+
+  const recorrentesFiltrados = useMemo(() => {
+    if (selectedFinId === 'todos') return recorrentes
+    return recorrentes.filter((r) => r.financeiro_id === selectedFinId)
+  }, [recorrentes, selectedFinId])
 
   const extratoFiltrado = useMemo(() => {
     if (selectedFinId === 'todos') return extratoItens
@@ -238,14 +255,52 @@ export default function Index() {
     return doMes
   }, [lancamentosFiltrados, mesAtualStr])
 
-  // PRÓXIMOS VENCIMENTOS (Lançamentos previstos e contas fixas próximas)
+  // PRÓXIMOS VENCIMENTOS (Lançamentos previstos + ocorrências de recorrentes)
   const proximosVencimentos = useMemo(() => {
     const hoje = getTodayISODate()
     const previstos = lancamentosFiltrados
       .filter((l) => l.status === 'previsto' && l.data >= hoje)
+      .map((l) => ({
+        id: l.id,
+        data: l.data,
+        descricao: l.descricao,
+        contraparte: l.contraparte || null,
+        valor: Number(l.valor),
+        tipo: l.tipo,
+        origem: 'lancamento' as const,
+      }))
+    const recorrentesOcorrencias = ocorrenciasRecorrentes(
+      recorrentesFiltrados,
+      lancamentosFiltrados,
+      undefined,
+      30,
+      5,
+    ).map((o) => ({
+      id: `rec:${o.data}:${o.descricao}`,
+      data: o.data,
+      descricao: o.descricao,
+      contraparte: null as string | null,
+      valor: o.valor,
+      tipo: o.tipo,
+      origem: 'recorrente' as const,
+    }))
+    return [...previstos, ...recorrentesOcorrencias]
+      .sort((a, b) => a.data.localeCompare(b.data))
       .slice(0, 5)
-    return previstos
-  }, [lancamentosFiltrados])
+  }, [lancamentosFiltrados, recorrentesFiltrados])
+
+  // SALDO PROJETADO EM 30 DIAS
+  const projecao = useMemo(
+    () =>
+      projetarSaldo30Dias(
+        contasFiltradas,
+        lancamentosFiltrados,
+        contasFixas,
+        recorrentesFiltrados,
+        selectedFinId,
+      ),
+    [contasFiltradas, lancamentosFiltrados, contasFixas, recorrentesFiltrados, selectedFinId],
+  )
 
   // ÚLTIMOS LANÇAMENTOS
   const ultimosLancamentos = useMemo(() => {
@@ -354,7 +409,7 @@ export default function Index() {
       </div>
 
       {/* 5 CARDS DE MÉTRICAS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
         {/* Card 1: Saldo Total */}
         <Card className="bg-[#141A22] border-[#232B36] p-4 text-white shadow-lg">
           <div className="flex items-center justify-between">
@@ -369,6 +424,26 @@ export default function Index() {
             {formatCurrency(saldoTotal)}
           </div>
           <p className="text-[10px] text-gray-500 mt-1">Disponível em contas bancárias</p>
+        </Card>
+
+        {/* Card: Saldo Projetado em 30 dias */}
+        <Card className="bg-[#141A22] border-[#232B36] p-4 text-white shadow-lg">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-400 font-semibold uppercase">
+              Saldo Projetado (30 dias)
+            </span>
+            <TrendingDown className="w-4 h-4 text-[#00D68F]" />
+          </div>
+          <div
+            className={`text-xl font-bold font-mono mt-1 ${
+              projecao.saldoProjetado < 0 ? 'text-[#FF5C5C]' : 'text-white'
+            }`}
+          >
+            {formatCurrency(projecao.saldoProjetado)}
+          </div>
+          <p className="text-[10px] text-gray-500 mt-1">
+            Caixa hoje + previsto + fixas + recorrentes
+          </p>
         </Card>
 
         {/* Card 2: Entradas do Mês */}
@@ -637,11 +712,19 @@ export default function Index() {
                 {proximosVencimentos.map((l) => (
                   <div key={l.id} className="p-3 flex items-center justify-between text-xs">
                     <div>
-                      <div className="font-semibold text-white">{l.descricao}</div>
+                      <div className="font-semibold text-white flex items-center gap-1.5">
+                        {l.origem === 'recorrente' && (
+                          <CalendarClock className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                        )}
+                        {l.descricao}
+                      </div>
                       <div className="text-[11px] text-gray-400 flex items-center gap-2 mt-0.5">
                         <span className="font-mono">{formatDateBR(l.data)}</span>
                         <span>•</span>
-                        <span>{l.contraparte || 'Sem contraparte'}</span>
+                        <span>
+                          {l.contraparte ||
+                            (l.origem === 'recorrente' ? 'Recorrente mensal' : 'Sem contraparte')}
+                        </span>
                       </div>
                     </div>
                     <span
