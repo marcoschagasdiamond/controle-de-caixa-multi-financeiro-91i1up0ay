@@ -17,6 +17,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AlertaContasFixas } from '@/components/AlertaContasFixas'
+import { PainelGraficos } from '@/components/PainelGraficos'
 import {
   DollarSign,
   ArrowUpRight,
@@ -551,6 +552,17 @@ export default function Index() {
         lancamentos={lancamentos}
         financeiroIdFiltro={selectedFinId}
         onPagamentoRegistrado={carregarPainel}
+      />
+
+      {/* DASHBOARD DE GRÁFICOS: por grupo, orçado vs realizado e tendência de saldo */}
+      <PainelGraficos
+        financeiros={financeiros}
+        lancamentos={lancamentosFiltrados}
+        contas={contasFiltradas}
+        contasFixas={contasFixas}
+        recorrentes={recorrentesFiltrados}
+        financeiroIdSelecionado={selectedFinId}
+        saldoAtual={saldoTotal}
       />
 
       {/* GRÁFICO DE 6 MESES: Entradas vs Saídas */}

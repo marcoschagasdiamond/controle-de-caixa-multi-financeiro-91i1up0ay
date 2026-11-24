@@ -27,6 +27,17 @@ import {
   RefreshCw,
   Scale,
 } from 'lucide-react'
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Cell,
+  ReferenceLine,
+} from 'recharts'
 
 // Uma linha do comparativo anual (categoria OU grupo)
 interface LinhaComparativo {
@@ -39,6 +50,9 @@ interface LinhaComparativo {
 }
 
 type Ordenacao = 'variacao_abs' | 'variacao_pct' | 'atual_desc' | 'anterior_desc' | 'nome_asc'
+
+// Eixo em R$ milhares (igual aos gráficos do Painel)
+const fmtK = (val: number) => `R$ ${(val / 1000).toFixed(0)}k`
 
 const ORDENACOES: Array<{ id: Ordenacao; rotulo: string }> = [
   { id: 'variacao_abs', rotulo: 'Maiores variações (R$)' },
@@ -220,6 +234,16 @@ export default function ComparativoAnualPage() {
     })
     return lista
   }, [linhas, ordenacao])
+
+  // Dados do gráfico de variação: linha com varAbs preenchida
+  const dadosGraficoVar = useMemo(
+    () =>
+      linhasOrdenadas.slice(0, 15).map((l) => ({
+        ...l,
+        varAbs: l.atual - l.anterior,
+      })),
+    [linhasOrdenadas],
+  )
 
   const nomeFinanceiro =
     financeiroId === 'todos'
@@ -546,6 +570,77 @@ export default function ComparativoAnualPage() {
               </TableBody>
             </Table>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* GRÁFICO: variação ano vs ano por categoria/grupo (barras divergentes) */}
+      <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
+        <CardHeader className="pb-3 border-b border-[#232B36] flex flex-row items-center justify-between">
+          <CardTitle className="text-base font-bold flex items-center gap-2">
+            <ArrowUpRight className="w-4 h-4 text-[#00D68F]" />
+            Variação {anoBase} vs {anoAnterior}
+          </CardTitle>
+          <span className="text-xs text-gray-400 font-mono">
+            {visao === 'grupo' ? 'por grupo' : 'por categoria'}
+          </span>
+        </CardHeader>
+        <CardContent className="p-0">
+          {linhasOrdenadas.length === 0 ? (
+            <div className="p-8 text-center text-xs text-gray-500">
+              Nada para plotar: sem lançamentos no período.
+            </div>
+          ) : (
+            <div className="h-72 w-full px-2 pt-3">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={dadosGraficoVar} layout="vertical" margin={{ left: 8, right: 24 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#232B36" horizontal={false} />
+                  <XAxis type="number" stroke="#64748B" fontSize={10} tickFormatter={fmtK} />
+                  <YAxis
+                    type="category"
+                    dataKey="nome"
+                    stroke="#64748B"
+                    fontSize={10}
+                    width={120}
+                    tickLine={false}
+                  />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#0B0F14',
+                      borderColor: '#232B36',
+                      borderRadius: '8px',
+                      color: '#F1F5F9',
+                    }}
+                    formatter={(value: any, _n: any, item: any) => {
+                      const l = item?.payload
+                      const tipoTxt =
+                        l?.tipo === 'receita'
+                          ? l.atual >= l.anterior
+                            ? 'receita cresceu'
+                            : 'receita caiu'
+                          : l?.atual >= l.anterior
+                            ? 'despesa subiu'
+                            : 'despesa caiu'
+                      return [formatCurrency(Number(value)), `Variação (${tipoTxt})`]
+                    }}
+                  />
+                  <ReferenceLine x={0} stroke="#475569" />
+                  <Bar dataKey="varAbs" radius={[3, 3, 3, 3]} barSize={16} maxBarSize={16}>
+                    {dadosGraficoVar.map((l) => {
+                      const varAbs = l.atual - l.anterior
+                      const bom = l.tipo === 'receita' ? varAbs >= 0 : varAbs <= 0
+                      return (
+                        <Cell
+                          key={l.chave}
+                          fill={bom ? '#00D68F' : '#FF5C5C'}
+                          opacity={varAbs === 0 ? 0.4 : 0.9}
+                        />
+                      )
+                    })}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </CardContent>
       </Card>
 
