@@ -233,6 +233,8 @@ export const FinanceiroService = {
         descricao: novaDescricao,
         tipo: categoria.tipo,
         ativo: true,
+        // grupo_id é NOT NULL: a cópia fica no MESMO grupo da original
+        grupo_id: categoria.grupo_id || null,
         user_id: user.id,
       })
       .select()

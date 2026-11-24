@@ -5,6 +5,7 @@ import {
   Financeiro,
   ContaBancaria,
   PlanoConta,
+  PlanoGrupo,
   ContaFixa,
   LancamentoRecorrente,
 } from '@/types/financeiro'
@@ -20,6 +21,7 @@ import {
   Building2,
   Wallet,
   BookOpen,
+  FolderPlus,
   CalendarClock,
   Repeat,
   Plus,
@@ -42,6 +44,8 @@ import { useAuth } from '@/hooks/use-auth'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import RelatorioContas from '@/components/RelatorioContas'
 import AbaEquipe from '@/components/AbaEquipe'
+import ArvorePlanoContas from '@/components/ArvorePlanoContas'
+import FormularioGrupo, { ModoGrupo } from '@/components/FormularioGrupo'
 
 // Chaves de persistência dos filtros no navegador
 const LS_FILTRO_CONTA_FIN = 'ccmf_filtro_conta_financeiro'
@@ -109,6 +113,12 @@ export default function ConfiguracoesPage() {
   const [savingPlano, setSavingPlano] = useState(false)
   const [editingPlanoId, setEditingPlanoId] = useState<string | null>(null)
   const [duplicandoPlanoId, setDuplicandoPlanoId] = useState<string | null>(null)
+  // ===== Hierarquia REAL do plano de contas (grupos_plano_contas) =====
+  const [grupos, setGrupos] = useState<PlanoGrupo[]>([])
+  const [abertos, setAbertos] = useState<Set<string>>(new Set())
+  const [modoGrupo, setModoGrupo] = useState<ModoGrupo>(null)
+  const [movendoPlanoId, setMovendoPlanoId] = useState<string | null>(null)
+  const [planoGrupoId, setPlanoGrupoId] = useState('')
   // Busca por código ou descrição na listagem do plano
   const [planoBusca, setPlanoBusca] = useState('')
   // Total lançado por categoria (somente realizados) e período selecionado
@@ -116,6 +126,14 @@ export default function ConfiguracoesPage() {
   const [totaisPorCategoria, setTotaisPorCategoria] = useState<Map<string, TotalPorCategoria>>(
     new Map(),
   )
+
+  const toggleGrupo = (id: string) =>
+    setAbertos((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
 
   // Filtros da listagem de Contas Bancárias (persistidos no navegador)
   const [filtroContaFin, setFiltroContaFin] = useState<string>(() =>
@@ -165,16 +183,23 @@ export default function ConfiguracoesPage() {
   const carregarTudo = async () => {
     try {
       setLoading(true)
-      const [fins, cts, pls, cfs, recs] = await Promise.all([
+      const [fins, cts, pls, gps, cfs, recs] = await Promise.all([
         FinanceiroService.getFinanceiros(),
         FinanceiroService.getContas(),
         FinanceiroService.getPlanoContas(),
+        FinanceiroService.getPlanoGrupos(),
         FinanceiroService.getContasFixas(),
         FinanceiroService.getLancamentosRecorrentes(),
       ])
       setFinanceiros(fins)
       setContas(cts)
       setPlanos(pls)
+      setGrupos(gps)
+      // Expansão: abre tudo por padrão na primeira carga
+      setAbertos((prev) => {
+        if (prev.size > 0) return prev
+        return new Set(gps.map((g) => g.id))
+      })
       setContasFixas(cfs)
       setRecorrentes(recs)
 
@@ -275,9 +300,12 @@ export default function ConfiguracoesPage() {
   const planosFiltrados = useMemo(() => {
     const q = planoBusca.trim().toLowerCase()
     if (!q) return planos
-    return planos.filter(
+    const filtrados = planos.filter(
       (p) => p.codigo.toLowerCase().includes(q) || p.descricao.toLowerCase().includes(q),
     )
+    // Na árvore, o grupo de uma categoria encontrada também fica visível
+    const idsGrupo = new Set(filtrados.map((p) => p.grupo_id).filter(Boolean) as string[])
+    return filtrados
   }, [planos, planoBusca])
 
   const limparFormConta = () => {
@@ -358,6 +386,7 @@ export default function ConfiguracoesPage() {
     setPlanoCodigo('')
     setPlanoDesc('')
     setPlanoTipo('despesa')
+    setPlanoGrupoId('')
   }
 
   const iniciarEdicaoPlano = (p: PlanoConta) => {
@@ -365,11 +394,29 @@ export default function ConfiguracoesPage() {
     setPlanoCodigo(p.codigo)
     setPlanoDesc(p.descricao)
     setPlanoTipo(p.tipo)
+    setPlanoGrupoId(p.grupo_id || '')
   }
 
   const handleSalvarPlano = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!planoCodigo.trim() || !planoDesc.trim()) return
+    const grupoSelecionado = grupos.find((g) => g.id === planoGrupoId)
+    if (!grupoSelecionado) {
+      toast({
+        variant: 'destructive',
+        title: 'Selecione um grupo',
+        description: 'Toda categoria pertence a um grupo do mesmo tipo.',
+      })
+      return
+    }
+    if (grupoSelecionado.tipo !== planoTipo) {
+      toast({
+        variant: 'destructive',
+        title: 'Grupo de outro tipo',
+        description: `A categoria é de ${planoTipo} e o grupo escolhido é de ${grupoSelecionado.tipo}.`,
+      })
+      return
+    }
     try {
       setSavingPlano(true)
       if (editingPlanoId) {
@@ -377,6 +424,7 @@ export default function ConfiguracoesPage() {
           codigo: planoCodigo.trim(),
           descricao: planoDesc.trim(),
           tipo: planoTipo,
+          grupo_id: planoGrupoId,
         })
         toast({ title: 'Categoria atualizada com sucesso!' })
       } else {
@@ -384,6 +432,7 @@ export default function ConfiguracoesPage() {
           codigo: planoCodigo.trim(),
           descricao: planoDesc.trim(),
           tipo: planoTipo,
+          grupo_id: planoGrupoId,
           ativo: true,
         })
         toast({ title: 'Categoria adicionada ao Plano de Contas Global!' })
@@ -409,6 +458,44 @@ export default function ConfiguracoesPage() {
       await carregarTudo()
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro ao excluir', description: err.message })
+    }
+  }
+
+  // ===== GRUPOS: mover categoria, criar/renomear/excluir grupo =====
+  const handleMoverCategoria = async (planoContaId: string, grupoId: string) => {
+    try {
+      setMovendoPlanoId(planoContaId)
+      await FinanceiroService.moverCategoriaParaGrupo(planoContaId, grupoId)
+      toast({ title: 'Categoria movida para o grupo com sucesso!' })
+      await carregarTudo()
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao mover categoria de grupo',
+        description: err?.message || 'Verifique o tipo do grupo de destino.',
+      })
+    } finally {
+      setMovendoPlanoId(null)
+    }
+  }
+
+  const handleExcluirGrupo = async (g: PlanoGrupo) => {
+    const filhas = planos.filter((p) => p.grupo_id === g.id).length
+    if (
+      !window.confirm(
+        `Excluir o grupo "${g.nome}"? As ${filhas} categoria(s) vinculadas serão EXCLUÍDAS JUNTO (exclusão em cascata).`,
+      )
+    )
+      return
+    try {
+      await FinanceiroService.deletePlanoGrupo(g.id)
+      toast({
+        title: 'Grupo excluído.',
+        description: `${filhas} categoria(s) foram removidas junto (cascata).`,
+      })
+      await carregarTudo()
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: 'Erro ao excluir grupo', description: err.message })
     }
   }
 
@@ -1095,6 +1182,25 @@ export default function ConfiguracoesPage() {
                       <option value="receita">Receita</option>
                     </select>
                   </div>
+
+                  <div className="md:col-span-3">
+                    <Label className="text-xs text-gray-400">Grupo do Plano de Contas *</Label>
+                    <select
+                      required
+                      value={planoGrupoId}
+                      onChange={(e) => setPlanoGrupoId(e.target.value)}
+                      className="w-full h-9 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1 cursor-pointer"
+                    >
+                      <option value="">Selecione um grupo...</option>
+                      {grupos
+                        .filter((g) => g.tipo === (planoTipo as string))
+                        .map((g) => (
+                          <option key={g.id} value={g.id}>
+                            {g.nome}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="flex justify-end gap-2 pt-2">
@@ -1135,6 +1241,14 @@ export default function ConfiguracoesPage() {
                 />
               </div>
               <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setModoGrupo({ modo: 'criar' })}
+                  size="sm"
+                  className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold text-xs h-8 cursor-pointer"
+                >
+                  <FolderPlus className="w-3.5 h-3.5 mr-1" />
+                  Novo Grupo
+                </Button>
                 <Label className="text-[10px] text-gray-400 uppercase font-bold whitespace-nowrap">
                   Período dos totais
                 </Label>
@@ -1151,89 +1265,33 @@ export default function ConfiguracoesPage() {
               </div>
             </div>
             <div className="overflow-x-auto max-h-96">
-              <table className="w-full text-left text-sm text-gray-300">
-                <thead className="bg-[#0B0F14] border-b border-[#232B36] text-xs text-gray-400 uppercase tracking-wider font-semibold sticky top-0">
-                  <tr>
-                    <th className="py-3 px-4">Código</th>
-                    <th className="py-3 px-4">Descrição</th>
-                    <th className="py-3 px-4">Tipo</th>
-                    <th className="py-3 px-4 text-right">Despesas lançadas</th>
-                    <th className="py-3 px-4 text-right">Receitas lançadas</th>
-                    <th className="py-3 px-4 text-center">Ações</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#232B36]">
-                  {planosFiltrados.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="py-8 px-4 text-center text-sm text-gray-500">
-                        {planos.length === 0
-                          ? 'Nenhuma categoria cadastrada ainda.'
-                          : 'Nenhuma categoria encontrada para a busca.'}
-                      </td>
-                    </tr>
-                  ) : (
-                    planosFiltrados.map((p) => {
-                      const tot = totaisPorCategoria.get(p.id)
-                      return (
-                        <tr key={p.id} className="hover:bg-[#1A222D]/40">
-                          <td className="py-2.5 px-4 font-mono text-xs text-gray-400">
-                            {p.codigo}
-                          </td>
-                          <td className="py-2.5 px-4 text-white font-medium">{p.descricao}</td>
-                          <td className="py-2.5 px-4">
-                            <Badge
-                              variant="outline"
-                              className={`text-[10px] ${
-                                p.tipo === 'receita'
-                                  ? 'text-[#00D68F] border-[#00D68F]/30'
-                                  : 'text-[#FF5C5C] border-[#FF5C5C]/30'
-                              }`}
-                            >
-                              {p.tipo}
-                            </Badge>
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-mono text-xs text-[#FF5C5C] whitespace-nowrap">
-                            {tot ? formatCurrency(tot.despesa) : 'R$ 0,00'}
-                          </td>
-                          <td className="py-2.5 px-4 text-right font-mono text-xs text-[#00D68F] whitespace-nowrap">
-                            {tot ? formatCurrency(tot.receita) : 'R$ 0,00'}
-                          </td>
-                          <td className="py-2.5 px-4 text-center whitespace-nowrap">
-                            <button
-                              onClick={() => iniciarEdicaoPlano(p)}
-                              title="Editar categoria"
-                              className="p-1 text-gray-500 hover:text-[#00D68F] hover:bg-[#00D68F]/10 rounded transition-colors cursor-pointer mr-1"
-                            >
-                              <Edit2 className="w-4 h-4" />
-                            </button>
-                            <button
-                              onClick={() => handleDuplicarPlano(p)}
-                              title="Duplicar categoria"
-                              disabled={duplicandoPlanoId === p.id}
-                              className="p-1 text-gray-500 hover:text-[#00D68F] hover:bg-[#00D68F]/10 rounded transition-colors cursor-pointer disabled:opacity-50 mr-1"
-                            >
-                              {duplicandoPlanoId === p.id ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Copy className="w-4 h-4" />
-                              )}
-                            </button>
-                            <button
-                              onClick={() => handleExcluirPlano(p.id)}
-                              title="Excluir categoria"
-                              className="p-1 text-gray-500 hover:text-[#FF5C5C] hover:bg-[#FF5C5C]/10 rounded transition-colors cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
+              <ArvorePlanoContas
+                grupos={grupos}
+                planosFiltrados={planosFiltrados}
+                planos={planos}
+                totaisPorCategoria={totaisPorCategoria}
+                abertos={abertos}
+                onToggleGrupo={toggleGrupo}
+                editarCategoria={iniciarEdicaoPlano}
+                duplicarCategoria={handleDuplicarPlano}
+                excluirCategoria={handleExcluirPlano}
+                iniciandoMoverId={movendoPlanoId}
+                onMoverCategoria={handleMoverCategoria}
+                onRenomearGrupo={(g) => setModoGrupo({ modo: 'editar', grupo: g })}
+                onExcluirGrupo={handleExcluirGrupo}
+                semGrupos={grupos.length === 0}
+              />
             </div>
           </div>
+
+          <FormularioGrupo
+            modo={modoGrupo}
+            onCancelar={() => setModoGrupo(null)}
+            onSalvo={async () => {
+              setModoGrupo(null)
+              await carregarTudo()
+            }}
+          />
         </TabsContent>
 
         {/* TAB 4: CONTAS FIXAS */}

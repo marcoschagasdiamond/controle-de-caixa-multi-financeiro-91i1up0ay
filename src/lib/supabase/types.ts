@@ -363,6 +363,33 @@ export type Database = {
         }
         Relationships: []
       }
+      grupos_plano_contas: {
+        Row: {
+          created_at: string
+          id: string
+          nome: string
+          ordem: number
+          tipo: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          nome: string
+          ordem?: number
+          tipo: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          nome?: string
+          ordem?: number
+          tipo?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       importacoes: {
         Row: {
           conta_id: string
@@ -684,33 +711,6 @@ export type Database = {
           },
         ]
       }
-      grupos_plano_contas: {
-        Row: {
-          created_at: string
-          id: string
-          nome: string
-          ordem: number
-          tipo: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          nome: string
-          ordem?: number
-          tipo: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          nome?: string
-          ordem?: number
-          tipo?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
       plano_contas: {
         Row: {
           ativo: boolean
@@ -718,7 +718,7 @@ export type Database = {
           created_at: string
           descricao: string
           financeiro_id: string | null
-          grupo_id: string | null
+          grupo_id: string
           id: string
           tipo: string
           user_id: string
@@ -729,7 +729,7 @@ export type Database = {
           created_at?: string
           descricao: string
           financeiro_id?: string | null
-          grupo_id?: string | null
+          grupo_id: string
           id?: string
           tipo: string
           user_id: string
@@ -740,7 +740,7 @@ export type Database = {
           created_at?: string
           descricao?: string
           financeiro_id?: string | null
-          grupo_id?: string | null
+          grupo_id?: string
           id?: string
           tipo?: string
           user_id?: string
@@ -759,6 +759,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: 'vw_fechamento_financeiro'
             referencedColumns: ['financeiro_id']
+          },
+          {
+            foreignKeyName: 'plano_contas_grupo_id_fkey'
+            columns: ['grupo_id']
+            isOneToOne: false
+            referencedRelation: 'grupos_plano_contas'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -842,6 +849,14 @@ export type Database = {
           member_user_id: string
           nome: string
         }[]
+      }
+      mover_categoria_para_grupo: {
+        Args: { p_grupo_id: string; p_plano_conta_id: string }
+        Returns: undefined
+      }
+      mover_categorias_para_grupo: {
+        Args: { p_grupo_id: string; p_plano_conta_ids: string[] }
+        Returns: number
       }
       usuario_pode_acessar_financeiro: {
         Args: { p_financeiro_id: string }
