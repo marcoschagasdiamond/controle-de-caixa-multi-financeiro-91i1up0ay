@@ -94,13 +94,12 @@ export const FinanceiroService = {
     if (error) throw error
   },
 
-  // Plano de Contas
-  async getPlanoContas(financeiroId?: string): Promise<PlanoConta[]> {
-    let query = supabase.from('plano_contas').select('*').order('codigo', { ascending: true })
-    if (financeiroId) {
-      query = query.eq('financeiro_id', financeiroId)
-    }
-    const { data, error } = await query
+  // Plano de Contas — GLOBAL: sem filtro por financeiro, todas as categorias
+  async getPlanoContas(_financeiroId?: string): Promise<PlanoConta[]> {
+    const { data, error } = await supabase
+      .from('plano_contas')
+      .select('*')
+      .order('codigo', { ascending: true })
     if (error) throw error
     return (data as PlanoConta[]) || []
   },
@@ -118,28 +117,6 @@ export const FinanceiroService = {
       .single()
     if (error) throw error
     return data as PlanoConta
-  },
-
-  async copyPlanoContas(origemFinanceiroId: string, destinoFinanceiroId: string): Promise<number> {
-    const originais = await this.getPlanoContas(origemFinanceiroId)
-    if (!originais.length) return 0
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) throw new Error('Usuário não autenticado')
-
-    const novos = originais.map((item) => ({
-      user_id: user.id,
-      financeiro_id: destinoFinanceiroId,
-      codigo: item.codigo,
-      descricao: item.descricao,
-      tipo: item.tipo,
-      ativo: item.ativo,
-    }))
-
-    const { data, error } = await (supabase.from('plano_contas') as any).insert(novos).select()
-    if (error) throw error
-    return data ? data.length : 0
   },
 
   async deletePlanoConta(id: string): Promise<void> {

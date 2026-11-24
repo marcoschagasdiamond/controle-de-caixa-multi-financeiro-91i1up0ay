@@ -25,7 +25,6 @@ import {
   ArrowLeft,
   Plus,
   Trash2,
-  Copy,
   Sparkles,
   ShieldCheck,
   AlertCircle,
@@ -69,65 +68,16 @@ export default function Onboarding() {
     },
   ])
 
-  // Passo 3: Plano de Contas
-  const [copiarDeFinId, setCopiarDeFinId] = useState<string>('')
+  // Passo 3: Plano de Contas — GLOBAL (categorias sem vínculo de empresa)
   const [planos, setPlanos] = useState<Array<Omit<PlanoConta, 'id' | 'user_id' | 'created_at'>>>([
-    {
-      financeiro_id: '',
-      codigo: '1.01',
-      descricao: 'Vendas de Mercadorias / Produtos',
-      tipo: 'receita',
-      ativo: true,
-    },
-    {
-      financeiro_id: '',
-      codigo: '1.02',
-      descricao: 'Prestação de Serviços',
-      tipo: 'receita',
-      ativo: true,
-    },
-    {
-      financeiro_id: '',
-      codigo: '1.03',
-      descricao: 'Rendimentos Financeiros',
-      tipo: 'receita',
-      ativo: true,
-    },
-    {
-      financeiro_id: '',
-      codigo: '2.01',
-      descricao: 'Fornecedores e Matéria-Prima',
-      tipo: 'despesa',
-      ativo: true,
-    },
-    {
-      financeiro_id: '',
-      codigo: '2.02',
-      descricao: 'Salários e Encargos',
-      tipo: 'despesa',
-      ativo: true,
-    },
-    {
-      financeiro_id: '',
-      codigo: '2.03',
-      descricao: 'Impostos e Taxas',
-      tipo: 'despesa',
-      ativo: true,
-    },
-    {
-      financeiro_id: '',
-      codigo: '2.04',
-      descricao: 'Aluguel, Condomínio e IPTU',
-      tipo: 'despesa',
-      ativo: true,
-    },
-    {
-      financeiro_id: '',
-      codigo: '2.05',
-      descricao: 'Despesas Bancárias e Tarifas',
-      tipo: 'despesa',
-      ativo: true,
-    },
+    { codigo: '1.01', descricao: 'Vendas de Mercadorias / Produtos', tipo: 'receita', ativo: true },
+    { codigo: '1.02', descricao: 'Prestação de Serviços', tipo: 'receita', ativo: true },
+    { codigo: '1.03', descricao: 'Rendimentos Financeiros', tipo: 'receita', ativo: true },
+    { codigo: '2.01', descricao: 'Fornecedores e Matéria-Prima', tipo: 'despesa', ativo: true },
+    { codigo: '2.02', descricao: 'Salários e Encargos', tipo: 'despesa', ativo: true },
+    { codigo: '2.03', descricao: 'Impostos e Taxas', tipo: 'despesa', ativo: true },
+    { codigo: '2.04', descricao: 'Aluguel, Condomínio e IPTU', tipo: 'despesa', ativo: true },
+    { codigo: '2.05', descricao: 'Despesas Bancárias e Tarifas', tipo: 'despesa', ativo: true },
   ])
 
   // Passo 4: Contas Fixas
@@ -199,7 +149,6 @@ export default function Onboarding() {
       setFinanceiroId(created.id)
       // Atualiza arrays dependentes com o novo id
       setContas((prev) => prev.map((c) => ({ ...c, financeiro_id: created.id })))
-      setPlanos((prev) => prev.map((p) => ({ ...p, financeiro_id: created.id })))
       setContasFixas((prev) => prev.map((cf) => ({ ...cf, financeiro_id: created.id })))
 
       context?.reloadFinanceiros?.()
@@ -256,25 +205,14 @@ export default function Onboarding() {
 
     try {
       setSavingStep(true)
-      if (copiarDeFinId) {
-        const count = await FinanceiroService.copyPlanoContas(copiarDeFinId, financeiroId)
-        toast({
-          title: 'Plano de contas copiado!',
-          description: `${count} categorias duplicadas com sucesso para este financeiro.`,
-        })
-      } else {
-        const planosValidos = planos.filter((p) => p.descricao.trim())
-        for (const p of planosValidos) {
-          await FinanceiroService.createPlanoConta({
-            ...p,
-            financeiro_id: financeiroId,
-          })
-        }
-        toast({
-          title: 'Plano de contas configurado!',
-          description: `${planosValidos.length} categorias cadastradas.`,
-        })
+      const planosValidos = planos.filter((p) => p.descricao.trim())
+      for (const p of planosValidos) {
+        await FinanceiroService.createPlanoConta(p)
       }
+      toast({
+        title: 'Plano de contas configurado!',
+        description: `${planosValidos.length} categorias cadastradas (plano global — visível em todos os financeiros).`,
+      })
       setStep(4)
     } catch (err: any) {
       setErrorMsg(err.message || 'Erro ao configurar plano de contas.')
@@ -755,129 +693,97 @@ export default function Onboarding() {
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2 text-white">
               <BookOpen className="w-5 h-5 text-[#00D68F]" />
-              Passo 3: Plano de Contas de {finNome}
+              Passo 3: Plano de Contas
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Categorias exclusivas para classificar receitas e despesas. Você pode copiar o plano
-              de outra entidade ou usar o modelo padrão pré-carregado.
+              Categorias globais — servem para todos os financeiros (empresas). Ajuste o modelo
+              padrão ou adicione as suas. O plano é compartilhado: o que você criar aqui já aparece
+              na escolha de categoria de qualquer empresa.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Opção de copiar de outro financeiro */}
-            {existingFinanceiros.filter((f) => f.id !== financeiroId).length > 0 && (
-              <div className="p-4 rounded-lg bg-[#0B0F14] border border-[#00D68F]/30 flex flex-col md:flex-row items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
-                  <Copy className="w-5 h-5 text-[#00D68F] shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-white">
-                      Copiar plano de contas de outro financeiro cadastrado:
-                    </p>
-                    <p className="text-xs text-gray-400">
-                      Reaproveite todas as categorias já criadas em outra empresa/PF.
-                    </p>
-                  </div>
-                </div>
-                <select
-                  value={copiarDeFinId}
-                  onChange={(e) => setCopiarDeFinId(e.target.value)}
-                  className="h-10 px-3 rounded-md bg-[#141A22] border border-[#2E3B4D] text-white text-sm min-w-[200px]"
-                >
-                  <option value="">Não copiar (usar lista abaixo)</option>
-                  {existingFinanceiros
-                    .filter((f) => f.id !== financeiroId)
-                    .map((f) => (
-                      <option key={f.id} value={f.id}>
-                        Copiar de: {f.nome} ({f.tipo})
-                      </option>
-                    ))}
-                </select>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-gray-400 uppercase font-semibold px-2">
+                <span className="w-20">Código</span>
+                <span className="flex-1 px-3">Descrição da Categoria</span>
+                <span className="w-28 text-center">Tipo</span>
+                <span className="w-10">
+                  <span className="sr-only">Ações</span>
+                </span>
               </div>
-            )}
 
-            {!copiarDeFinId && (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-gray-400 uppercase font-semibold px-2">
-                  <span className="w-20">Código</span>
-                  <span className="flex-1 px-3">Descrição da Categoria</span>
-                  <span className="w-28 text-center">Tipo</span>
-                  <span className="w-10">
-                    <span className="sr-only">Ações</span>
-                  </span>
-                </div>
-
-                <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
-                  {planos.map((p, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 p-2 rounded-lg bg-[#0B0F14] border border-[#232B36]"
+              <div className="max-h-72 overflow-y-auto space-y-2 pr-1">
+                {planos.map((p, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-2 p-2 rounded-lg bg-[#0B0F14] border border-[#232B36]"
+                  >
+                    <Input
+                      value={p.codigo}
+                      onChange={(e) => {
+                        const next = [...planos]
+                        next[idx].codigo = e.target.value
+                        setPlanos(next)
+                      }}
+                      className="w-20 bg-[#141A22] border-[#2E3B4D] text-xs font-mono text-white"
+                    />
+                    <Input
+                      value={p.descricao}
+                      onChange={(e) => {
+                        const next = [...planos]
+                        next[idx].descricao = e.target.value
+                        setPlanos(next)
+                      }}
+                      className="flex-1 bg-[#141A22] border-[#2E3B4D] text-sm text-white"
+                    />
+                    <select
+                      value={p.tipo}
+                      onChange={(e) => {
+                        const next = [...planos]
+                        next[idx].tipo = e.target.value as 'receita' | 'despesa'
+                        setPlanos(next)
+                      }}
+                      className={`w-28 h-9 px-2 rounded bg-[#141A22] border border-[#2E3B4D] text-xs font-semibold ${
+                        p.tipo === 'receita' ? 'text-[#00D68F]' : 'text-[#FF5C5C]'
+                      }`}
                     >
-                      <Input
-                        value={p.codigo}
-                        onChange={(e) => {
-                          const next = [...planos]
-                          next[idx].codigo = e.target.value
-                          setPlanos(next)
-                        }}
-                        className="w-20 bg-[#141A22] border-[#2E3B4D] text-xs font-mono text-white"
-                      />
-                      <Input
-                        value={p.descricao}
-                        onChange={(e) => {
-                          const next = [...planos]
-                          next[idx].descricao = e.target.value
-                          setPlanos(next)
-                        }}
-                        className="flex-1 bg-[#141A22] border-[#2E3B4D] text-sm text-white"
-                      />
-                      <select
-                        value={p.tipo}
-                        onChange={(e) => {
-                          const next = [...planos]
-                          next[idx].tipo = e.target.value as 'receita' | 'despesa'
-                          setPlanos(next)
-                        }}
-                        className={`w-28 h-9 px-2 rounded bg-[#141A22] border border-[#2E3B4D] text-xs font-semibold ${
-                          p.tipo === 'receita' ? 'text-[#00D68F]' : 'text-[#FF5C5C]'
-                        }`}
-                      >
-                        <option value="receita">Receita</option>
-                        <option value="despesa">Despesa</option>
-                      </select>
-                      <button
-                        type="button"
-                        aria-label="Excluir categoria"
-                        onClick={() => setPlanos(planos.filter((_, i) => i !== idx))}
-                        className="p-1.5 text-gray-500 hover:text-[#FF5C5C] cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() =>
-                    setPlanos([
-                      ...planos,
-                      {
-                        financeiro_id: financeiroId || '',
-                        codigo: `2.0${planos.length + 1}`,
-                        descricao: '',
-                        tipo: 'despesa',
-                        ativo: true,
-                      },
-                    ])
-                  }
-                  className="border-dashed border-[#2E3B4D] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer"
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Nova Categoria
-                </Button>
+                      <option value="receita">Receita</option>
+                      <option value="despesa">Despesa</option>
+                    </select>
+                    <button
+                      type="button"
+                      aria-label="Excluir categoria"
+                      onClick={() => setPlanos(planos.filter((_, i) => i !== idx))}
+                      className="p-1.5 text-gray-500 hover:text-[#FF5C5C] cursor-pointer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            )}
+
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  setPlanos([
+                    ...planos,
+                    {
+                      financeiro_id: financeiroId || '',
+                      codigo: `2.0${planos.length + 1}`,
+                      descricao: '',
+                      tipo: 'despesa',
+                      ativo: true,
+                    },
+                  ])
+                }
+                className="border-dashed border-[#2E3B4D] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer"
+              >
+                <Plus className="w-4 h-4 mr-2" />
+                Nova Categoria
+              </Button>
+            </div>
           </CardContent>
           <CardFooter className="flex justify-between border-t border-[#232B36] pt-4">
             <Button

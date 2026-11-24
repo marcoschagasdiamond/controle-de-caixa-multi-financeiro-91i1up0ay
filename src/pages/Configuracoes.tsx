@@ -33,9 +33,12 @@ import {
   ShieldCheck,
   Download,
   BarChart3,
+  Users,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { useAuth } from '@/hooks/use-auth'
 import RelatorioContas from '@/components/RelatorioContas'
+import AbaEquipe from '@/components/AbaEquipe'
 
 // Chaves de persistência dos filtros no navegador
 const LS_FILTRO_CONTA_FIN = 'ccmf_filtro_conta_financeiro'
@@ -52,8 +55,17 @@ function lerFiltroSalvo(chave: string): string {
 
 export default function ConfiguracoesPage() {
   const { toast } = useToast()
+  const { user } = useAuth()
   const [searchParams] = useSearchParams()
-  const TABS_VALIDAS = ['financeiros', 'contas', 'plano', 'fixas', 'recorrentes', 'relatorio']
+  const TABS_VALIDAS = [
+    'financeiros',
+    'contas',
+    'plano',
+    'fixas',
+    'recorrentes',
+    'relatorio',
+    'equipe',
+  ]
   const initialTab = TABS_VALIDAS.includes(searchParams.get('tab') || '')
     ? (searchParams.get('tab') as string)
     : 'financeiros'
@@ -87,7 +99,6 @@ export default function ConfiguracoesPage() {
   const [editingContaId, setEditingContaId] = useState<string | null>(null)
 
   // 3. Plano de Contas
-  const [planoFinId, setPlanoFinId] = useState('')
   const [planoCodigo, setPlanoCodigo] = useState('')
   const [planoDesc, setPlanoDesc] = useState('')
   const [planoTipo, setPlanoTipo] = useState<'receita' | 'despesa'>('despesa')
@@ -156,7 +167,6 @@ export default function ConfiguracoesPage() {
 
       if (fins.length > 0) {
         if (!ctaFinId) setCtaFinId(fins[0].id)
-        if (!planoFinId) setPlanoFinId(fins[0].id)
         if (!fixaFinId) setFixaFinId(fins[0].id)
         if (!recFinId) setRecFinId(fins[0].id)
       }
@@ -303,17 +313,16 @@ export default function ConfiguracoesPage() {
 
   const handleCriarPlano = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!planoFinId || !planoCodigo.trim() || !planoDesc.trim()) return
+    if (!planoCodigo.trim() || !planoDesc.trim()) return
     try {
       setSavingPlano(true)
       await FinanceiroService.createPlanoConta({
-        financeiro_id: planoFinId,
         codigo: planoCodigo.trim(),
         descricao: planoDesc.trim(),
         tipo: planoTipo,
         ativo: true,
       })
-      toast({ title: 'Categoria adicionada ao Plano de Contas!' })
+      toast({ title: 'Categoria adicionada ao Plano de Contas Global!' })
       setPlanoCodigo('')
       setPlanoDesc('')
       await carregarTudo()
@@ -381,14 +390,10 @@ export default function ConfiguracoesPage() {
     setRecTipo('debito')
   }
 
-  // Planos de contas do financeiro selecionado (para os selects do formulário e da edição)
+  // Plano de contas é GLOBAL: o select de categorias dos recorrentes usa todas
   useEffect(() => {
-    if (!recFinId) {
-      setRecPlanoFiltrado([])
-      return
-    }
-    setRecPlanoFiltrado(planos.filter((p) => p.financeiro_id === recFinId))
-  }, [recFinId, planos])
+    setRecPlanoFiltrado(planos)
+  }, [planos])
 
   const iniciarEdicaoRecorrente = (r: LancamentoRecorrente) => {
     setEditingRecId(r.id)
@@ -581,6 +586,15 @@ export default function ConfiguracoesPage() {
             <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
             Relatório de Contas
           </TabsTrigger>
+          {user && (
+            <TabsTrigger
+              value="equipe"
+              className="data-[state=active]:bg-[#00D68F] data-[state=active]:text-[#0B0F14] text-xs font-semibold"
+            >
+              <Users className="w-3.5 h-3.5 mr-1.5" />
+              Equipe
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* TAB 1: FINANCEIROS */}

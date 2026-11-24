@@ -29,7 +29,6 @@ export interface ContaBancaria {
 export interface PlanoConta {
   id: string
   user_id: string
-  financeiro_id: string
   codigo: string
   descricao: string
   tipo: 'receita' | 'despesa'
@@ -165,4 +164,24 @@ export interface FechamentoFinanceiroView {
   saldo_atual: number
   a_receber_previsto: number
   a_pagar_previsto: number
+}
+
+// ==== EQUIPE ====
+// Membro da equipe: acesso concedido a financeiros (empresas) do dono.
+// O master é o dono dos financeiros (user_id = financeiro.user_id).
+export interface EquipeMembroAcesso {
+  id: string
+  owner_user_id: string
+  member_user_id: string
+  financeiro_id: string
+  papel: 'master' | 'membro'
+  created_at?: string
+  updated_at?: string
+}
+
+export interface MembroEquipeView {
+  member_user_id: string
+  email: string
+  nome: string
+  financeiros: string[] // ids liberados
 }
