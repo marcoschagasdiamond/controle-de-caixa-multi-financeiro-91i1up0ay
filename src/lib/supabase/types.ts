@@ -821,6 +821,89 @@ export type Database = {
           },
         ]
       }
+      recebiveis_sem_data: {
+        Row: {
+          contratante: string | null
+          created_at: string
+          descricao: string
+          financeiro_id: string
+          gatilho_outro: string | null
+          id: string
+          lancamento_id: string | null
+          observacao: string | null
+          plano_conta_id: string | null
+          status: string
+          status_gatilho: string
+          total_parcelas: number | null
+          updated_at: string
+          user_id: string
+          valor_total: number
+        }
+        Insert: {
+          contratante?: string | null
+          created_at?: string
+          descricao: string
+          financeiro_id: string
+          gatilho_outro?: string | null
+          id?: string
+          lancamento_id?: string | null
+          observacao?: string | null
+          plano_conta_id?: string | null
+          status?: string
+          status_gatilho: string
+          total_parcelas?: number | null
+          updated_at?: string
+          user_id: string
+          valor_total: number
+        }
+        Update: {
+          contratante?: string | null
+          created_at?: string
+          descricao?: string
+          financeiro_id?: string
+          gatilho_outro?: string | null
+          id?: string
+          lancamento_id?: string | null
+          observacao?: string | null
+          plano_conta_id?: string | null
+          status?: string
+          status_gatilho?: string
+          total_parcelas?: number | null
+          updated_at?: string
+          user_id?: string
+          valor_total?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'recebiveis_sem_data_financeiro_id_fkey'
+            columns: ['financeiro_id']
+            isOneToOne: false
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recebiveis_sem_data_financeiro_id_fkey'
+            columns: ['financeiro_id']
+            isOneToOne: false
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
+          },
+          {
+            foreignKeyName: 'recebiveis_sem_data_lancamento_id_fkey'
+            columns: ['lancamento_id']
+            isOneToOne: false
+            referencedRelation: 'lancamentos'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'recebiveis_sem_data_plano_conta_id_fkey'
+            columns: ['plano_conta_id']
+            isOneToOne: false
+            referencedRelation: 'plano_contas'
+            referencedColumns: ['id']
+          },
+        ]
+      }
     }
     Views: {
       vw_fechamento_financeiro: {

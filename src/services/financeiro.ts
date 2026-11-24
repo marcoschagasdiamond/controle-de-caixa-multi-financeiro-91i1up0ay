@@ -13,6 +13,7 @@ import {
   Budget,
   FechamentoFinanceiroView,
   LancamentoRecorrente,
+  RecebivelSemData,
 } from '@/types/financeiro'
 
 // Total lançado (somente realizados) por categoria do plano de contas
@@ -621,5 +622,53 @@ export const FinanceiroService = {
     })
     if (error) throw error
     return (data as any) ?? undefined
+  },
+
+  // ===== RECEBÍVEIS SEM DATA (contratos a receber, sem data definida) =====
+  // NÃO entram na projeção de caixa: nenhuma tela de projeção consulta esta tabela.
+
+  async getRecebiveisSemData(financeiroId?: string): Promise<RecebivelSemData[]> {
+    let query = (supabase.from('recebiveis_sem_data') as any)
+      .select('*')
+      .order('created_at', { ascending: false })
+    if (financeiroId && financeiroId !== 'todos') {
+      query = query.eq('financeiro_id', financeiroId)
+    }
+    const { data, error } = await query
+    if (error) throw error
+    return (data as RecebivelSemData[]) || []
+  },
+
+  async createRecebivelSemData(
+    payload: Omit<
+      RecebivelSemData,
+      'id' | 'user_id' | 'status' | 'lancamento_id' | 'created_at' | 'updated_at'
+    >,
+  ): Promise<RecebivelSemData> {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) throw new Error('Usuário não autenticado')
+    const { data, error } = await (supabase.from('recebiveis_sem_data') as any)
+      .insert({ ...payload, user_id: user.id })
+      .select()
+      .single()
+    if (error) throw error
+    return data as RecebivelSemData
+  },
+
+  async updateRecebivelSemData(
+    id: string,
+    payload: Partial<Omit<RecebivelSemData, 'id' | 'user_id' | 'created_at' | 'updated_at'>>,
+  ): Promise<void> {
+    const { error } = await (supabase.from('recebiveis_sem_data') as any)
+      .update(payload)
+      .eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteRecebivelSemData(id: string): Promise<void> {
+    const { error } = await (supabase.from('recebiveis_sem_data') as any).delete().eq('id', id)
+    if (error) throw error
   },
 }

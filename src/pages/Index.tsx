@@ -8,6 +8,7 @@ import {
   ExtratoItem,
   ContaFixa,
   LancamentoRecorrente,
+  RecebivelSemData,
 } from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
 import { CalendarClock, TrendingDown } from 'lucide-react'
@@ -57,6 +58,7 @@ export default function Index() {
   const [extratoItens, setExtratoItens] = useState<ExtratoItem[]>([])
   const [contasFixas, setContasFixas] = useState<ContaFixa[]>([])
   const [recorrentes, setRecorrentes] = useState<LancamentoRecorrente[]>([])
+  const [recebiveis, setRecebiveis] = useState<RecebivelSemData[]>([])
   const [loading, setLoading] = useState(true)
 
   // Filtro de financeiro ou consolidado no Painel
@@ -73,18 +75,20 @@ export default function Index() {
   const carregarPainel = async () => {
     try {
       setLoading(true)
-      const [cts, lcs, ext, cfs, recs] = await Promise.all([
+      const [cts, lcs, ext, cfs, recs, rcds] = await Promise.all([
         FinanceiroService.getContas(),
         FinanceiroService.getLancamentos(),
         FinanceiroService.getExtratoItens(),
         FinanceiroService.getContasFixas(),
         FinanceiroService.getLancamentosRecorrentes(),
+        FinanceiroService.getRecebiveisSemData(),
       ])
       setContas(cts)
       setLancamentos(lcs)
       setExtratoItens(ext)
       setContasFixas(cfs)
       setRecorrentes(recs)
+      setRecebiveis(rcds)
     } catch (err) {
       console.error('Erro ao carregar painel:', err)
     } finally {
@@ -336,6 +340,17 @@ export default function Index() {
     return lancamentosFiltrados.slice(0, 5)
   }, [lancamentosFiltrados])
 
+  // RECEBÍVEIS SEM DATA: pendentes do financeiro/seleção atual (fora da projeção)
+  const recebiveisPendentes = useMemo(() => {
+    if (selectedFinId === 'todos') return recebiveis.filter((r) => r.status === 'pendente')
+    return recebiveis.filter((r) => r.status === 'pendente' && r.financeiro_id === selectedFinId)
+  }, [recebiveis, selectedFinId])
+
+  const totalAReceberDefinido = recebiveisPendentes.reduce(
+    (acc, r) => acc + Number(r.valor_total),
+    0,
+  )
+
   // Onboarding trigger se sistema estiver limpo
   if (isEmpty) {
     return (
@@ -542,6 +557,34 @@ export default function Index() {
           >
             Abrir conciliação
           </button>
+        </Card>
+
+        {/* Card 6: Recebíveis sem data (contratos a receber) — fora da projeção */}
+        <Card
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/lancamentos#recebiveis-sem-data')}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              navigate('/lancamentos#recebiveis-sem-data')
+            }
+          }}
+          aria-label={`A receber quando definido: ${formatCurrency(totalAReceberDefinido)} em ${recebiveisPendentes.length} contrato(s). Abrir em Lançamentos`}
+          className="bg-[#141A22] border-[#232B36] p-4 text-white shadow-lg cursor-pointer hover:border-amber-400/60 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+        >
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-400 font-semibold uppercase">
+              A Receber Quando Definido
+            </span>
+            <CalendarClock className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="text-xl font-bold font-mono mt-1 text-amber-400">
+            {formatCurrency(totalAReceberDefinido)}
+          </div>
+          <p className="text-[10px] text-gray-500 mt-1">
+            {recebiveisPendentes.length} contrato(s) sem data — fora da projeção. Clique para ver.
+          </p>
         </Card>
       </div>
 

@@ -166,6 +166,27 @@ export interface Budget {
   updated_at?: string
 }
 
+// Recebível sem data definida (contrato a receber): recebível real cuja data
+// depende de gatilho externo (despacho, término do contrato). NÃO entra na
+// projeção de caixa; quando a data sai, é convertido em lançamento previsto.
+export interface RecebivelSemData {
+  id: string
+  user_id: string
+  financeiro_id: string
+  descricao: string
+  valor_total: number
+  total_parcelas?: number | null // NULL = pagamento único
+  contratante?: string | null
+  status_gatilho: 'aguardando_despacho' | 'aguardando_termino' | 'outro'
+  gatilho_outro?: string | null
+  observacao?: string | null
+  plano_conta_id?: string | null
+  status: 'pendente' | 'convertido'
+  lancamento_id?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
 export interface FechamentoFinanceiroView {
   financeiro_id: string
   user_id: string

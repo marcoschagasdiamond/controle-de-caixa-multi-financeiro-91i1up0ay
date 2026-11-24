@@ -44,6 +44,7 @@ import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import { dataUltimaParcela, mesPorExtenso } from '@/lib/recorrentes'
 import { CalendarClock, Repeat, Pencil, X } from 'lucide-react'
 import TabelaAnualRecorrentes from '@/components/TabelaAnualRecorrentes'
+import { RecebiveisSemData } from '@/components/RecebiveisSemData'
 import { LancamentoRecorrente } from '@/types/financeiro'
 
 export default function LancamentosPage() {
@@ -1272,6 +1273,9 @@ export default function LancamentosPage() {
         lancamentos={lancamentos}
         financeiros={financeiros}
       />
+
+      {/* RECEBÍVEIS SEM DATA: contratos a receber sem data definida, fora da projeção */}
+      <RecebiveisSemData financeiros={financeiros} planos={planos} />
     </div>
   )
 }
