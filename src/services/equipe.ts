@@ -37,41 +37,26 @@ export const EquipeService = {
     } = await supabase.auth.getUser()
     if (!user) throw new Error('Usuário não autenticado')
 
-    const { data, error } = await supabase
-      .from('equipe_membros')
-      .select('member_user_id, financeiro_id')
-      .eq('owner_user_id', user.id)
+    // RPC equipe_listar_membros (SECURITY DEFINER): traz vinculados (equipe_membros)
+    // E convidados do master que ainda não têm financeiro marcado (invited_by
+    // gravado no raw_user_meta_data pela edge function convidar-usuario),
+    // já com o e-mail de cada um.
+    const { data, error } = await (supabase as any).rpc('equipe_listar_membros')
     if (error) throw error
 
-    const rows = (data as { member_user_id: string; financeiro_id: string }[]) || []
-    const porMembro = new Map<string, MembroEquipeView>()
-    for (const r of rows) {
-      if (!porMembro.has(r.member_user_id)) {
-        porMembro.set(r.member_user_id, {
-          member_user_id: r.member_user_id,
-          email: '', // preenchido abaixo (via edge function, se disponível)
-          nome: '',
-          financeiros: [],
-        })
-      }
-      porMembro.get(r.member_user_id)!.financeiros.push(r.financeiro_id)
-    }
-
-    // E-mails não são legíveis de auth.users pelo client público; o master
-    // conhece os e-mails que convidou. Tentamos a RPC, se existir.
-    try {
-      const { data: emails, error: errRpc } = await (supabase as any).rpc('equipe_emails_membros')
-      if (!errRpc && emails) {
-        for (const e of emails as { user_id: string; email: string }[]) {
-          const m = porMembro.get(e.user_id)
-          if (m) m.email = e.email
-        }
-      }
-    } catch {
-      // rpc indisponível — mantém e-mail vazio
-    }
-
-    return Array.from(porMembro.values())
+    return (
+      (data as {
+        member_user_id: string
+        email: string
+        nome: string
+        financeiro_ids: string[]
+      }[]) || []
+    ).map((r) => ({
+      member_user_id: r.member_user_id,
+      email: r.email ?? '',
+      nome: r.nome ?? '',
+      financeiros: r.financeiro_ids ?? [],
+    }))
   },
 
   // Marca/desmarca um financeiro para um membro (checkbox).
@@ -115,6 +100,19 @@ export const EquipeService = {
       .eq('owner_user_id', user.id)
       .eq('member_user_id', memberUserId)
     if (error) throw error
+  },
+
+  // Remove um convidado que ainda não tem nenhum financeiro marcado:
+  // apaga o login (auth) criado pela edge function. Sem vínculo em
+  // equipe_membros, o RLS não permite deletar nada aqui; por isso a
+  // remoção é feita pela edge function 'remover-usuario'.
+  async removerConvidado(memberUserId: string): Promise<void> {
+    const { data, error } = await supabase.functions.invoke('remover-usuario', {
+      body: { userId: memberUserId },
+    })
+    if (error) throw new Error(error.message)
+    const payload = data as { error?: string } | null
+    if (payload?.error) throw new Error(payload.error)
   },
 
   // Lista IDs dos financeiros liberados ao usuário logado (membro).

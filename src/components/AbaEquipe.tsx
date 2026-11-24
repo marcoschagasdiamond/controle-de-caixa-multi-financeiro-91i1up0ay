@@ -87,13 +87,22 @@ export default function AbaEquipe({ financeiros }: Props) {
     }
   }
 
-  const handleRemoverMembro = async (memberUserId: string) => {
+  const handleRemoverMembro = async (m: MembroEquipeView) => {
+    const semVinculo = m.financeiros.length === 0
     if (
-      !window.confirm('Remover este usuário da equipe? Ele perde o acesso a todos os financeiros.')
+      !window.confirm(
+        semVinculo
+          ? `Remover o convidado ${m.email}? O login criado para ele será apagado.`
+          : 'Remover este usuário da equipe? Ele perde o acesso a todos os financeiros.',
+      )
     )
       return
     try {
-      await EquipeService.removerMembro(memberUserId)
+      if (semVinculo) {
+        await EquipeService.removerConvidado(m.member_user_id)
+      } else {
+        await EquipeService.removerMembro(m.member_user_id)
+      }
       toast({ title: 'Usuário removido da equipe.' })
       await carregar()
     } catch (err: any) {
@@ -199,8 +208,12 @@ export default function AbaEquipe({ financeiros }: Props) {
                   <p className="text-[11px] text-gray-500 font-mono">{m.member_user_id}</p>
                 </div>
                 <button
-                  onClick={() => handleRemoverMembro(m.member_user_id)}
-                  title="Remover usuário da equipe"
+                  onClick={() => handleRemoverMembro(m)}
+                  title={
+                    m.financeiros.length === 0
+                      ? 'Remover convidado (ainda sem empresa marcada)'
+                      : 'Remover usuário da equipe'
+                  }
                   className="p-1.5 text-gray-500 hover:text-[#FF5C5C] cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
