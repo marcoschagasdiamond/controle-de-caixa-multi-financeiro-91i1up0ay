@@ -12,6 +12,7 @@ import NecessidadeCaixaPage from '@/pages/NecessidadeCaixa'
 import MutuosPage from '@/pages/Mutuos'
 import FechamentoPage from '@/pages/Fechamento'
 import ConfiguracoesPage from '@/pages/Configuracoes'
+import ComparativoAnualPage from '@/pages/ComparativoAnual'
 import NotFound from '@/pages/NotFound'
 
 const router = createBrowserRouter([
@@ -28,6 +29,7 @@ const router = createBrowserRouter([
       { path: 'necessidade-caixa', element: <NecessidadeCaixaPage /> },
       { path: 'mutuos', element: <MutuosPage /> },
       { path: 'fechamento', element: <FechamentoPage /> },
+      { path: 'comparativo-anual', element: <ComparativoAnualPage /> },
       { path: 'configuracoes', element: <ConfiguracoesPage /> },
       { path: '*', element: <NotFound /> },
     ],

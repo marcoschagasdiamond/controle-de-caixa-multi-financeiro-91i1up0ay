@@ -19,6 +19,7 @@ import {
   Menu,
   X,
   PlusCircle,
+  GitCompareArrows,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -72,6 +73,7 @@ export default function Layout() {
     { to: '/necessidade-caixa', label: 'Necessidade de Caixa', icon: ShieldAlert },
     { to: '/mutuos', label: 'Mútuos', icon: Building2 },
     { to: '/fechamento', label: 'Fechamento', icon: FileText },
+    { to: '/comparativo-anual', label: 'Comparativo Anual', icon: GitCompareArrows },
     { to: '/configuracoes', label: 'Configurações', icon: Settings },
   ]
 

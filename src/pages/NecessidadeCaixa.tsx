@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { FinanceiroService } from '@/services/financeiro'
 import { Financeiro, ContaBancaria, ContaFixa, Lancamento } from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate, addDays } from '@/lib/formatters'
+import { baixarCSV, valorCSV } from '@/lib/csv'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +16,7 @@ import {
   Building2,
   RefreshCw,
   ArrowRight,
+  Download,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
@@ -69,6 +71,7 @@ export default function NecessidadeCaixaPage() {
     dataPrimeiraNecessidade,
     pioresDias,
     analisePorFinanceiro,
+    diasFluxo,
   } = useMemo(() => {
     const hoje = getTodayISODate()
 
@@ -88,6 +91,15 @@ export default function NecessidadeCaixaPage() {
     let maxDeficit = 0
     let primeiraDataDeficit: string | null = null
     const todosDiasComSaldo: Array<{ data: string; saldo: number }> = []
+
+    // Detalhe diário para a exportação CSV (mesma base da projeção)
+    const dias: Array<{
+      data: string
+      saldoInicial: number
+      entradas: number
+      saidas: number
+      saldoAcumulado: number
+    }> = []
 
     for (let i = 0; i < horizonte; i++) {
       const dataDia = addDays(hoje, i)
@@ -113,9 +125,18 @@ export default function NecessidadeCaixaPage() {
         }
       }
 
+      const saldoInicialDia = saldoAcumulado
       saldoAcumulado = saldoAcumulado + entDia - saiDia
       sumEntradas += entDia
       sumSaidas += saiDia
+
+      dias.push({
+        data: dataDia,
+        saldoInicial: saldoInicialDia,
+        entradas: entDia,
+        saidas: saiDia,
+        saldoAcumulado,
+      })
 
       todosDiasComSaldo.push({ data: dataDia, saldo: saldoAcumulado })
 
@@ -208,8 +229,30 @@ export default function NecessidadeCaixaPage() {
       dataPrimeiraNecessidade: primeiraDataDeficit,
       pioresDias: piores,
       analisePorFinanceiro: porFin,
+      diasFluxo: dias,
     }
   }, [financeiros, contas, contasFixas, lancamentos, horizonte])
+
+  // Exporta a projeção diária do horizonte escolhido em CSV BR (padrão do Fluxo de Caixa)
+  const handleExportarCSV = () => {
+    baixarCSV(
+      `necessidade-caixa-consolidado-${horizonte}-dias.csv`,
+      [
+        'Data',
+        'Saldo Inicial (R$)',
+        'Entradas Previstas (R$)',
+        'Saídas Previstas (R$)',
+        'Saldo Acumulado (R$)',
+      ],
+      diasFluxo.map((d) => [
+        formatDateBR(d.data),
+        valorCSV(d.saldoInicial),
+        valorCSV(d.entradas),
+        valorCSV(d.saidas),
+        valorCSV(d.saldoAcumulado),
+      ]),
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -238,6 +281,17 @@ export default function NecessidadeCaixaPage() {
               </button>
             ))}
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportarCSV}
+            disabled={diasFluxo.length === 0}
+            className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] h-9"
+          >
+            <Download className="w-3.5 h-3.5 mr-2" />
+            Exportar CSV
+          </Button>
 
           <Button
             variant="outline"
