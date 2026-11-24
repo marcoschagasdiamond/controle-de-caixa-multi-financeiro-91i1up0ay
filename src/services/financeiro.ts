@@ -11,6 +11,7 @@ import {
   Mutuo,
   Budget,
   FechamentoFinanceiroView,
+  LancamentoRecorrente,
 } from '@/types/financeiro'
 
 export const FinanceiroService = {
@@ -177,6 +178,48 @@ export const FinanceiroService = {
 
   async deleteContaFixa(id: string): Promise<void> {
     const { error } = await supabase.from('contas_fixas').delete().eq('id', id)
+    if (error) throw error
+  },
+
+  // Lançamentos recorrentes mensais
+  async getLancamentosRecorrentes(financeiroId?: string): Promise<LancamentoRecorrente[]> {
+    let query = supabase
+      .from('lancamentos_recorrentes')
+      .select('*')
+      .order('dia_mes', { ascending: true })
+    if (financeiroId) {
+      query = query.eq('financeiro_id', financeiroId)
+    }
+    const { data, error } = await query
+    if (error) throw error
+    return (data as LancamentoRecorrente[]) || []
+  },
+
+  async createLancamentoRecorrente(
+    payload: Omit<LancamentoRecorrente, 'id' | 'user_id' | 'created_at' | 'updated_at'>,
+  ): Promise<LancamentoRecorrente> {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) throw new Error('Usuário não autenticado')
+    const { data, error } = await (supabase.from('lancamentos_recorrentes') as any)
+      .insert({ ...payload, user_id: user.id })
+      .select()
+      .single()
+    if (error) throw error
+    return data as LancamentoRecorrente
+  },
+
+  async updateLancamentoRecorrente(
+    id: string,
+    payload: Partial<Omit<LancamentoRecorrente, 'id' | 'user_id' | 'created_at' | 'updated_at'>>,
+  ): Promise<void> {
+    const { error } = await supabase.from('lancamentos_recorrentes').update(payload).eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteLancamentoRecorrente(id: string): Promise<void> {
+    const { error } = await supabase.from('lancamentos_recorrentes').delete().eq('id', id)
     if (error) throw error
   },
 

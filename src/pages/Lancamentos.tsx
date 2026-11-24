@@ -24,9 +24,11 @@ import {
   BookOpen,
   Loader2,
   RefreshCw,
+  Download,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useNavigate } from 'react-router-dom'
+import { baixarCSV, valorCSV } from '@/lib/csv'
 
 export default function LancamentosPage() {
   const { toast } = useToast()
@@ -261,6 +263,53 @@ export default function LancamentosPage() {
     filtroDataFim,
     filtroBusca,
   ])
+
+  // Exporta exatamente a listagem filtrada atual em CSV (formato BR)
+  const handleExportarCSV = () => {
+    if (lancamentosFiltrados.length === 0) {
+      toast({
+        variant: 'destructive',
+        title: 'Nada para exportar',
+        description: 'Nenhum lançamento corresponde aos filtros atuais.',
+      })
+      return
+    }
+    const linhas = lancamentosFiltrados.map((item) => {
+      const fin = financeiros.find((f) => f.id === item.financeiro_id)
+      const conta = contas.find((c) => c.id === item.conta_id)
+      const plano = planos.find((p) => p.id === item.plano_conta_id)
+      return [
+        formatDateBR(item.data),
+        item.descricao,
+        fin ? `${fin.nome} (${fin.tipo})` : '',
+        conta ? `${conta.banco} (${conta.conta})` : '',
+        plano ? `${plano.codigo} - ${plano.descricao}` : '',
+        item.tipo === 'credito' ? 'Crédito (Entrada)' : 'Débito (Saída)',
+        valorCSV(item.valor),
+        item.status === 'realizado' ? 'Realizado' : 'Previsto',
+        item.contraparte || '',
+        item.documento || '',
+      ]
+    })
+    // Nome do arquivo pelo período filtrado (ou mês atual, se não houver período)
+    const base = filtroDataInicio ? filtroDataInicio.slice(0, 7) : getTodayISODate().slice(0, 7)
+    baixarCSV(
+      `lancamentos-${base}.csv`,
+      [
+        'Data',
+        'Descrição',
+        'Financeiro',
+        'Conta',
+        'Plano de Contas',
+        'Tipo',
+        'Valor (R$)',
+        'Status',
+        'Contraparte',
+        'Documento',
+      ],
+      linhas,
+    )
+  }
 
   // Se não houver nenhum financeiro, orienta para o Onboarding
   if (!loading && financeiros.length === 0) {
@@ -662,15 +711,26 @@ export default function LancamentosPage() {
               </Badge>
             </div>
 
-            {/* Busca Rápida */}
-            <div className="relative w-full md:w-72">
-              <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <Input
-                value={filtroBusca}
-                onChange={(e) => setFiltroBusca(e.target.value)}
-                placeholder="Buscar por descrição, NF, favorecido..."
-                className="pl-9 bg-[#0B0F14] border-[#232B36] text-white text-xs"
-              />
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportarCSV}
+                className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] shrink-0"
+              >
+                <Download className="w-3.5 h-3.5 mr-2" />
+                Exportar CSV
+              </Button>
+              {/* Busca Rápida */}
+              <div className="relative w-full md:w-72">
+                <Search className="w-4 h-4 text-gray-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Input
+                  value={filtroBusca}
+                  onChange={(e) => setFiltroBusca(e.target.value)}
+                  placeholder="Buscar por descrição, NF, favorecido..."
+                  className="pl-9 bg-[#0B0F14] border-[#232B36] text-white text-xs"
+                />
+              </div>
             </div>
           </div>
 

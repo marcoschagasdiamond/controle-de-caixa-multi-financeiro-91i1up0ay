@@ -51,6 +51,23 @@ export interface ContaFixa {
   created_at?: string
 }
 
+export interface LancamentoRecorrente {
+  id: string
+  user_id: string
+  financeiro_id: string
+  conta_id: string
+  plano_conta_id: string
+  descricao: string
+  valor: number
+  tipo: 'credito' | 'debito'
+  status: 'previsto'
+  dia_mes: number
+  data_inicial: string // YYYY-MM-DD
+  ativo: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 export interface Lancamento {
   id: string
   user_id: string

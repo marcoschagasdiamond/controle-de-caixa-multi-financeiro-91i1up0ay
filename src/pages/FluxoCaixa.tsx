@@ -1,7 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { FinanceiroService } from '@/services/financeiro'
-import { Financeiro, ContaBancaria, ContaFixa, Lancamento } from '@/types/financeiro'
+import {
+  Financeiro,
+  ContaBancaria,
+  ContaFixa,
+  Lancamento,
+  LancamentoRecorrente,
+} from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate, addDays } from '@/lib/formatters'
+import { baixarCSV, valorCSV } from '@/lib/csv'
+import { recorrenteOcorreEm } from '@/lib/recorrentes'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -15,6 +23,8 @@ import {
   Building2,
   CalendarClock,
   RefreshCw,
+  Download,
+  Printer,
 } from 'lucide-react'
 import {
   ResponsiveContainer,
@@ -42,6 +52,7 @@ export default function FluxoCaixaPage() {
   const [financeiros, setFinanceiros] = useState<Financeiro[]>([])
   const [contas, setContas] = useState<ContaBancaria[]>([])
   const [contasFixas, setContasFixas] = useState<ContaFixa[]>([])
+  const [recorrentes, setRecorrentes] = useState<LancamentoRecorrente[]>([])
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -53,15 +64,17 @@ export default function FluxoCaixaPage() {
   const carregarDados = async () => {
     try {
       setLoading(true)
-      const [fins, cts, cfs, lcs] = await Promise.all([
+      const [fins, cts, cfs, rcs, lcs] = await Promise.all([
         FinanceiroService.getFinanceiros(),
         FinanceiroService.getContas(),
         FinanceiroService.getContasFixas(),
+        FinanceiroService.getLancamentosRecorrentes(),
         FinanceiroService.getLancamentos(),
       ])
       setFinanceiros(fins)
       setContas(cts)
       setContasFixas(cfs)
+      setRecorrentes(rcs)
       setLancamentos(lcs)
     } catch (err) {
       console.error(err)
@@ -113,6 +126,11 @@ export default function FluxoCaixaPage() {
           ? contasFixas
           : contasFixas.filter((cf) => cf.financeiro_id === selectedFinId)
 
+      const recorrentesFiltrados =
+        selectedFinId === 'consolidado'
+          ? recorrentes
+          : recorrentes.filter((r) => r.financeiro_id === selectedFinId)
+
       for (let i = 0; i < horizonte; i++) {
         const dataDia = addDays(hoje, i)
         const [anoStr, mesStr, diaStr] = dataDia.split('-')
@@ -149,6 +167,20 @@ export default function FluxoCaixaPage() {
           }
         }
 
+        // Lançamentos recorrentes mensais ativos (programação; o pagamento real é lançado à mão)
+        for (const rc of recorrentesFiltrados) {
+          if (rc.ativo && recorrenteOcorreEm(dataDia, rc.dia_mes, rc.data_inicial)) {
+            const val = Number(rc.valor)
+            if (rc.tipo === 'credito') {
+              entradas += val
+              fixasDoDia.push(`+ ${rc.descricao} (Recorrente mensal)`)
+            } else {
+              saidas += val
+              fixasDoDia.push(`- ${rc.descricao} (Recorrente mensal)`)
+            }
+          }
+        }
+
         const saldoInicialDoDia = saldoAcumulado
         const saldoDoDia = entradas - saidas
         saldoAcumulado = saldoInicialDoDia + saldoDoDia
@@ -177,12 +209,59 @@ export default function FluxoCaixaPage() {
         saldoFinalProjetado: saldoAcumulado,
         diasNegativosCount: negCount,
       }
-    }, [contas, lancamentos, contasFixas, selectedFinId, horizonte])
+    }, [contas, lancamentos, contasFixas, recorrentes, selectedFinId, horizonte])
+
+  const nomeFinanceiroSelecionado =
+    selectedFinId === 'consolidado'
+      ? 'Visão Consolidada (Grupo)'
+      : financeiros.find((f) => f.id === selectedFinId)?.nome || ''
+
+  const periodoInicio = diasFluxo[0]?.data || getTodayISODate()
+  const periodoFim = diasFluxo[diasFluxo.length - 1]?.data || periodoInicio
+
+  // Exporta a tabela diária atual (financeiro e horizonte escolhidos) em CSV BR
+  const handleExportarCSV = () => {
+    const slug = nomeFinanceiroSelecionado
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    baixarCSV(
+      `fluxo-caixa-${slug}-${horizonte}-dias.csv`,
+      [
+        'Data',
+        'Saldo Inicial (R$)',
+        'Entradas Previstas (R$)',
+        'Saídas Previstas (R$)',
+        'Saldo do Dia (R$)',
+        'Saldo Acumulado (R$)',
+      ],
+      diasFluxo.map((d) => [
+        formatDateBR(d.data),
+        valorCSV(d.saldoInicial),
+        valorCSV(d.entradasPrevistas),
+        valorCSV(d.saidasPrevistas),
+        valorCSV(d.saldoDoDia),
+        valorCSV(d.saldoAcumulado),
+      ]),
+    )
+  }
 
   return (
     <div className="space-y-6">
+      {/* Cabeçalho exibido apenas na impressão */}
+      <div className="hidden print:block text-black">
+        <h1 className="text-xl font-bold">Relatório de Fluxo de Caixa Projetado</h1>
+        <p className="text-sm">Financeiro: {nomeFinanceiroSelecionado}</p>
+        <p className="text-sm">
+          Período: {formatDateBR(periodoInicio)} a {formatDateBR(periodoFim)} ({horizonte} dias)
+        </p>
+        <p className="text-sm">Gerado em: {new Date().toLocaleString('pt-BR')}</p>
+      </div>
+
       {/* Cabeçalho */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <div>
           <h1 className="text-2xl font-bold text-white tracking-tight">Fluxo de Caixa Projetado</h1>
           <p className="text-sm text-gray-400">
@@ -224,6 +303,26 @@ export default function FluxoCaixaPage() {
               </button>
             ))}
           </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportarCSV}
+            disabled={diasFluxo.length === 0}
+            className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] h-9"
+          >
+            <Download className="w-3.5 h-3.5 mr-2" />
+            Exportar CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => window.print()}
+            className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] h-9"
+          >
+            <Printer className="w-3.5 h-3.5 mr-2" />
+            Imprimir
+          </Button>
 
           <Button
             variant="outline"
@@ -300,7 +399,7 @@ export default function FluxoCaixaPage() {
       </div>
 
       {/* GRÁFICO RECHARTS DE FLUXO DE CAIXA */}
-      <Card className="bg-[#141A22] border-[#232B36] text-white p-6 shadow-xl">
+      <Card className="bg-[#141A22] border-[#232B36] text-white p-6 shadow-xl print:hidden">
         <CardHeader className="p-0 pb-4">
           <CardTitle className="text-base font-bold text-white flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-[#00D68F]" />
@@ -362,7 +461,7 @@ export default function FluxoCaixaPage() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto max-h-[500px]">
+          <div className="overflow-x-auto max-h-[500px] print:max-h-none">
             <table className="w-full text-left text-sm text-gray-300">
               <thead className="bg-[#0B0F14] border-b border-[#232B36] text-xs text-gray-400 uppercase tracking-wider sticky top-0 z-10 font-semibold">
                 <tr>
@@ -419,7 +518,7 @@ export default function FluxoCaixaPage() {
                       >
                         {formatCurrency(dia.saldoAcumulado)}
                       </td>
-                      <td className="py-2.5 px-4 text-xs">
+                      <td className="py-2.5 px-4 text-xs print:hidden">
                         {dia.contasFixasIncluidas.length > 0 ? (
                           <div className="flex flex-wrap gap-1">
                             {dia.contasFixasIncluidas.map((fixa, idx) => (
