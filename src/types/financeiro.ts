@@ -210,6 +210,7 @@ export interface EquipeMembroAcesso {
   member_user_id: string
   financeiro_id: string
   papel: 'master' | 'membro'
+  pode_criar_empresas?: boolean
   created_at?: string
   updated_at?: string
 }
@@ -219,4 +220,5 @@ export interface MembroEquipeView {
   email: string
   nome: string
   financeiros: string[] // ids liberados
+  pode_criar_empresas: boolean
 }

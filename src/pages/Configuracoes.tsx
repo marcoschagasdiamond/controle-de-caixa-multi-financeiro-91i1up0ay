@@ -64,7 +64,7 @@ export default function ConfiguracoesPage() {
   const { toast } = useToast()
   const { user } = useAuth()
   // Apenas o master (dono) vê a aba Equipe
-  const { isMaster } = useAcessoFinanceiros()
+  const { isMaster, podeCriarEmpresas } = useAcessoFinanceiros()
   const [searchParams] = useSearchParams()
   const TABS_VALIDAS = [
     'financeiros',
@@ -248,6 +248,16 @@ export default function ConfiguracoesPage() {
   const handleCriarFinanceiro = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!finNome.trim()) return
+    // Proteção dupla (a UI já esconde o formulário): membro sem a
+    // permissão "pode criar empresas" não cadastra.
+    if (user && !isMaster && !podeCriarEmpresas) {
+      toast({
+        variant: 'destructive',
+        title: 'Sem autorização',
+        description: 'Solicite autorização ao master para cadastrar empresas.',
+      })
+      return
+    }
     try {
       setSavingFin(true)
       await FinanceiroService.createFinanceiro({
@@ -781,87 +791,101 @@ export default function ConfiguracoesPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="pt-4">
-              <form onSubmit={handleCriarFinanceiro} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-xs text-gray-400">Tipo de Entidade</Label>
-                    <select
-                      value={finTipo}
-                      onChange={(e) => setFinTipo(e.target.value as any)}
-                      className="w-full h-9 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
-                    >
-                      <option value="PJ">Pessoa Jurídica (PJ)</option>
-                      <option value="PF">Pessoa Física (PF)</option>
-                    </select>
-                  </div>
+              {/* Membro sem permissão: formulário bloqueado com aviso claro */}
+              {user && !isMaster && !podeCriarEmpresas && (
+                <Alert className="mb-4 bg-[#0B0F14] border-[#FFB020]/40 text-white">
+                  <AlertTriangle className="w-4 h-4 text-[#FFB020]" />
+                  <AlertDescription className="text-xs text-gray-300">
+                    Você não tem autorização para cadastrar novas empresas.{' '}
+                    <span className="font-semibold text-[#FFB020]">
+                      Solicite autorização ao master.
+                    </span>
+                  </AlertDescription>
+                </Alert>
+              )}
+              {(!user || isMaster || podeCriarEmpresas) && (
+                <form onSubmit={handleCriarFinanceiro} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <Label className="text-xs text-gray-400">Tipo de Entidade</Label>
+                      <select
+                        value={finTipo}
+                        onChange={(e) => setFinTipo(e.target.value as any)}
+                        className="w-full h-9 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
+                      >
+                        <option value="PJ">Pessoa Jurídica (PJ)</option>
+                        <option value="PF">Pessoa Física (PF)</option>
+                      </select>
+                    </div>
 
-                  <div>
-                    <Label className="text-xs text-gray-400">Nome / Razão Social *</Label>
-                    <Input
-                      required
-                      value={finNome}
-                      onChange={(e) => setFinNome(e.target.value)}
-                      placeholder="Ex: Minha Empresa Ltda"
-                      className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs text-gray-400">
-                      {finTipo === 'PJ' ? 'CNPJ' : 'CPF'}
-                    </Label>
-                    <Input
-                      value={finCpfCnpj}
-                      onChange={(e) => setFinCpfCnpj(e.target.value)}
-                      placeholder="00.000.000/0001-00"
-                      className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs text-gray-400">Regime Tributário / Ocupação</Label>
-                    <Input
-                      value={finRegime}
-                      onChange={(e) => setFinRegime(e.target.value)}
-                      placeholder="Simples Nacional"
-                      className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs text-gray-400">Sócios / Quadro Societário</Label>
-                    <Input
-                      value={finSocios}
-                      onChange={(e) => setFinSocios(e.target.value)}
-                      placeholder="Sócios participantes"
-                      className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs text-gray-400">Cor de Identificação</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <input
-                        type="color"
-                        value={finCor}
-                        onChange={(e) => setFinCor(e.target.value)}
-                        className="w-9 h-9 rounded border border-[#232B36] bg-transparent cursor-pointer"
+                    <div>
+                      <Label className="text-xs text-gray-400">Nome / Razão Social *</Label>
+                      <Input
+                        required
+                        value={finNome}
+                        onChange={(e) => setFinNome(e.target.value)}
+                        placeholder="Ex: Minha Empresa Ltda"
+                        className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
                       />
-                      <span className="font-mono text-xs text-gray-400">{finCor}</span>
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-gray-400">
+                        {finTipo === 'PJ' ? 'CNPJ' : 'CPF'}
+                      </Label>
+                      <Input
+                        value={finCpfCnpj}
+                        onChange={(e) => setFinCpfCnpj(e.target.value)}
+                        placeholder="00.000.000/0001-00"
+                        className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-gray-400">Regime Tributário / Ocupação</Label>
+                      <Input
+                        value={finRegime}
+                        onChange={(e) => setFinRegime(e.target.value)}
+                        placeholder="Simples Nacional"
+                        className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-gray-400">Sócios / Quadro Societário</Label>
+                      <Input
+                        value={finSocios}
+                        onChange={(e) => setFinSocios(e.target.value)}
+                        placeholder="Sócios participantes"
+                        className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label className="text-xs text-gray-400">Cor de Identificação</Label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <input
+                          type="color"
+                          value={finCor}
+                          onChange={(e) => setFinCor(e.target.value)}
+                          className="w-9 h-9 rounded border border-[#232B36] bg-transparent cursor-pointer"
+                        />
+                        <span className="font-mono text-xs text-gray-400">{finCor}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="flex justify-end pt-2">
-                  <Button
-                    type="submit"
-                    disabled={savingFin}
-                    className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold text-xs h-9 cursor-pointer"
-                  >
-                    Salvar Financeiro
-                  </Button>
-                </div>
-              </form>
+                  <div className="flex justify-end pt-2">
+                    <Button
+                      type="submit"
+                      disabled={savingFin}
+                      className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold text-xs h-9 cursor-pointer"
+                    >
+                      Salvar Financeiro
+                    </Button>
+                  </div>
+                </form>
+              )}
             </CardContent>
           </Card>
 

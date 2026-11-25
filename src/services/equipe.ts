@@ -50,12 +50,14 @@ export const EquipeService = {
         email: string
         nome: string
         financeiro_ids: string[]
+        pode_criar_empresas: boolean
       }[]) || []
     ).map((r) => ({
       member_user_id: r.member_user_id,
       email: r.email ?? '',
       nome: r.nome ?? '',
       financeiros: r.financeiro_ids ?? [],
+      pode_criar_empresas: r.pode_criar_empresas ?? false,
     }))
   },
 
@@ -86,6 +88,21 @@ export const EquipeService = {
         .eq('financeiro_id', financeiroId)
       if (error) throw error
     }
+  },
+
+  // Permissão por membro: pode criar empresas? (checkbox na aba Equipe).
+  // Grava a flag em TODAS as linhas do membro (uma por financeiro liberado);
+  // o hook lê `some(...)` por isso — a permissão é do membro, não do vínculo.
+  async setPodeCriarEmpresas(memberUserId: string, pode: boolean): Promise<void> {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) throw new Error('Usuário não autenticado')
+    const { error } = await (supabase.from('equipe_membros') as any)
+      .update({ pode_criar_empresas: pode })
+      .eq('owner_user_id', user.id)
+      .eq('member_user_id', memberUserId)
+    if (error) throw error
   },
 
   // Remove todos os acessos de um membro (remove da equipe).

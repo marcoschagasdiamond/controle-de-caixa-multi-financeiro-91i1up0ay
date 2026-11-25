@@ -24,6 +24,7 @@ export default function AbaEquipe({ financeiros }: Props) {
   const [novaSenha, setNovaSenha] = useState('')
   const [salvando, setSalvando] = useState(false)
   const [toggling, setToggling] = useState<string | null>(null) // `${member}:${fin}`
+  const [togglingCriar, setTogglingCriar] = useState<string | null>(null)
   const [meuId, setMeuId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -84,6 +85,29 @@ export default function AbaEquipe({ financeiros }: Props) {
       toast({ variant: 'destructive', title: 'Erro ao alterar acesso', description: err.message })
     } finally {
       setToggling(null)
+    }
+  }
+
+  // Permissão por membro: pode criar empresas (checkbox). Master sempre pode.
+  const handleTogglePodeCriar = async (m: MembroEquipeView, pode: boolean) => {
+    try {
+      setTogglingCriar(m.member_user_id)
+      await EquipeService.setPodeCriarEmpresas(m.member_user_id, pode)
+      await carregar()
+      toast({
+        title: pode ? 'Permissão concedida.' : 'Permissão revogada.',
+        description: pode
+          ? `${m.email} pode cadastrar novas empresas.`
+          : `${m.email} não pode cadastrar empresas — solicitaria autorização ao master.`,
+      })
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao alterar permissão',
+        description: err.message,
+      })
+    } finally {
+      setTogglingCriar(null)
     }
   }
 
@@ -266,6 +290,43 @@ export default function AbaEquipe({ financeiros }: Props) {
                     Cadastre financeiros primeiro para liberar acessos.
                   </span>
                 )}
+              </div>
+              <div className="mt-3 pt-3 border-t border-[#232B36]">
+                <label
+                  className={`inline-flex items-center gap-2 text-xs ${
+                    meuId === m.member_user_id ? 'opacity-60' : 'cursor-pointer'
+                  }`}
+                  title={
+                    meuId === m.member_user_id
+                      ? 'O master sempre pode criar empresas'
+                      : 'Permite que este usuário cadastre novas empresas'
+                  }
+                >
+                  <input
+                    type="checkbox"
+                    checked={m.pode_criar_empresas}
+                    disabled={togglingCriar === m.member_user_id || meuId === m.member_user_id}
+                    onChange={(e) => handleTogglePodeCriar(m, e.target.checked)}
+                    className="accent-[#00D68F] cursor-pointer"
+                  />
+                  <span className="text-gray-300 font-medium">Pode criar empresas</span>
+                  {m.pode_criar_empresas ? (
+                    <Badge
+                      variant="outline"
+                      className="text-[9px] border-[#00D68F]/40 text-[#00D68F]"
+                    >
+                      autorizado
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-[9px] border-[#232B36] text-gray-500">
+                      sem autorização
+                    </Badge>
+                  )}
+                </label>
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Desmarcado por padrão — sem essa permissão, o usuário vê o aviso para solicitar
+                  autorização ao master ao tentar cadastrar uma empresa.
+                </p>
               </div>
               {meuId === m.member_user_id && (
                 <p className="text-[11px] text-amber-400 mt-2">

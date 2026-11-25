@@ -2,23 +2,19 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Financeiro } from '@/types/financeiro'
 
-interface UseAcessoFinanceiros {
+// Espelha o RLS (usuario_pode_acessar_financeiro): o master (dono) vê TODAS as
+// empresas — as suas E as criadas por membros da equipe; membro vê a UNIÃO de
+// criadas por ele + liberadas via equipe_membros. Sem vínculo algum: só as suas.
+export function useAcessoFinanceiros(): {
   financeiros: Financeiro[]
   isMaster: boolean
   loading: boolean
-}
-
-/**
- * useAcessoFinanceiros — lista de financeiros visíveis ao usuário logado.
- * Master (dono): vê todos os seus financeiros.
- * Membro da equipe: vê somente os liberados em equipe_membros.
- * O RLS do banco já aplica a mesma regra; aqui espelhamos no frontend
- * para filtrar listas e o consolidado nas telas.
- */
-export function useAcessoFinanceiros(): UseAcessoFinanceiros {
+  podeCriarEmpresas: boolean
+} {
   const [financeiros, setFinanceiros] = useState<Financeiro[]>([])
   const [isMaster, setIsMaster] = useState(true)
   const [loading, setLoading] = useState(true)
+  const [podeCriarEmpresas, setPodeCriarEmpresas] = useState(true)
 
   useEffect(() => {
     let ativo = true
@@ -39,23 +35,32 @@ export function useAcessoFinanceiros(): UseAcessoFinanceiros {
         const [{ data: fins, error }, { data: liberados, error: errLiberados }] = await Promise.all(
           [
             supabase.from('financeiros').select('*').order('nome', { ascending: true }),
-            supabase.from('equipe_membros').select('financeiro_id').eq('member_user_id', user.id),
+            supabase
+              .from('equipe_membros')
+              .select('financeiro_id, pode_criar_empresas')
+              .eq('member_user_id', user.id),
           ],
         )
         if (error) throw error
+        if (errLiberados) throw errLiberados
 
-        const idsLiberados = new Set(
-          ((liberados as { financeiro_id: string }[]) || []).map((r) => r.financeiro_id),
-        )
+        const todas = (fins as Financeiro[]) || []
+        const linhas =
+          (liberados as { financeiro_id: string; pode_criar_empresas: boolean }[]) || []
+        const idsLiberados = new Set(linhas.map((r) => r.financeiro_id))
         // Membro = tem linha em equipe_membros como member_user_id.
-        const membro = idsLiberados.size > 0
+        const membro = linhas.length > 0
+
+        // Master (sem linha em equipe_membros como membro): vê tudo o que o RLS
+        // retorna — suas empresas + as de membros. Membro: união criadas+liberadas.
         const lista = membro
-          ? ((fins as Financeiro[]) || []).filter((f) => idsLiberados.has(f.id))
-          : ((fins as Financeiro[]) || []).filter((f) => f.user_id === user.id)
+          ? todas.filter((f) => idsLiberados.has(f.id) || f.user_id === user.id)
+          : todas
 
         if (ativo) {
           setFinanceiros(lista)
           setIsMaster(!membro)
+          setPodeCriarEmpresas(!membro || linhas.some((r) => r.pode_criar_empresas))
           setLoading(false)
         }
       } catch {
@@ -69,5 +74,5 @@ export function useAcessoFinanceiros(): UseAcessoFinanceiros {
     }
   }, [])
 
-  return { financeiros, isMaster, loading }
+  return { financeiros, isMaster, loading, podeCriarEmpresas }
 }

@@ -31,10 +31,13 @@ import {
   Loader2,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 
 export default function Onboarding() {
   const navigate = useNavigate()
   const { toast } = useToast()
+  const { isMaster, podeCriarEmpresas } = useAcessoFinanceiros()
+  const semPermissaoCriar = !isMaster && !podeCriarEmpresas
   const context = useOutletContext<{ reloadFinanceiros?: () => void }>()
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
@@ -132,6 +135,13 @@ export default function Onboarding() {
     setErrorMsg(null)
     if (!finNome.trim()) {
       setErrorMsg('Informe o nome do financeiro (empresa ou pessoa física).')
+      return
+    }
+    // Membro sem a permissão do master não cadastra empresa aqui.
+    if (semPermissaoCriar) {
+      setErrorMsg(
+        'Você não tem autorização para cadastrar empresas. Solicite autorização ao master.',
+      )
       return
     }
 
@@ -319,189 +329,214 @@ export default function Onboarding() {
       {/* PASSO 1: CADASTRAR FINANCEIRO */}
       {step === 1 && (
         <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
-          <form onSubmit={handleSaveStep1}>
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2 text-white">
-                <Building2 className="w-5 h-5 text-[#00D68F]" />
-                Passo 1: Dados do Financeiro (Pessoa Física ou Jurídica)
-              </CardTitle>
-              <CardDescription className="text-gray-400">
-                Cada financeiro é uma entidade jurídica ou física totalmente isolada no caixa.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs uppercase text-gray-300 font-semibold">
-                    Tipo de Entidade
-                  </Label>
-                  <div className="flex gap-4">
-                    <button
-                      type="button"
-                      onClick={() => setFinTipo('PJ')}
-                      className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-sm border flex items-center justify-center gap-2 transition-all cursor-pointer ${
+          {semPermissaoCriar ? (
+            <CardContent className="pt-6">
+              <Alert className="bg-[#0B0F14] border-[#FFB020]/40 text-white">
+                <AlertCircle className="w-4 h-4 text-[#FFB020]" />
+                <AlertDescription className="text-xs text-gray-300">
+                  Você não tem autorização para cadastrar empresas.{' '}
+                  <span className="font-semibold text-[#FFB020]">
+                    Solicite autorização ao master.
+                  </span>
+                </AlertDescription>
+              </Alert>
+              <div className="mt-4 flex justify-end">
+                <Button
+                  type="button"
+                  onClick={() => navigate('/lancamentos')}
+                  className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-semibold cursor-pointer"
+                >
+                  Ir para Lançamentos
+                </Button>
+              </div>
+            </CardContent>
+          ) : (
+            <form onSubmit={handleSaveStep1}>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2 text-white">
+                  <Building2 className="w-5 h-5 text-[#00D68F]" />
+                  Passo 1: Dados do Financeiro (Pessoa Física ou Jurídica)
+                </CardTitle>
+                <CardDescription className="text-gray-400">
+                  Cada financeiro é uma entidade jurídica ou física totalmente isolada no caixa.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs uppercase text-gray-300 font-semibold">
+                      Tipo de Entidade
+                    </Label>
+                    <div className="flex gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setFinTipo('PJ')}
+                        className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-sm border flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          finTipo === 'PJ'
+                            ? 'bg-[#00D68F] text-[#0B0F14] border-[#00D68F]'
+                            : 'bg-[#0B0F14] text-gray-300 border-[#232B36] hover:bg-[#1E2633]'
+                        }`}
+                      >
+                        <Building2 className="w-4 h-4" />
+                        Pessoa Jurídica (PJ)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFinTipo('PF')}
+                        className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-sm border flex items-center justify-center gap-2 transition-all cursor-pointer ${
+                          finTipo === 'PF'
+                            ? 'bg-[#00D68F] text-[#0B0F14] border-[#00D68F]'
+                            : 'bg-[#0B0F14] text-gray-300 border-[#232B36] hover:bg-[#1E2633]'
+                        }`}
+                      >
+                        Pessoa Física (PF)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="finNome"
+                      className="text-xs uppercase text-gray-300 font-semibold"
+                    >
+                      Nome da Entidade / Razão Social *
+                    </Label>
+                    <Input
+                      id="finNome"
+                      required
+                      value={finNome}
+                      onChange={(e) => setFinNome(e.target.value)}
+                      placeholder={
                         finTipo === 'PJ'
-                          ? 'bg-[#00D68F] text-[#0B0F14] border-[#00D68F]'
-                          : 'bg-[#0B0F14] text-gray-300 border-[#232B36] hover:bg-[#1E2633]'
-                      }`}
-                    >
-                      <Building2 className="w-4 h-4" />
-                      Pessoa Jurídica (PJ)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFinTipo('PF')}
-                      className={`flex-1 py-2.5 px-4 rounded-lg font-semibold text-sm border flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                        finTipo === 'PF'
-                          ? 'bg-[#00D68F] text-[#0B0F14] border-[#00D68F]'
-                          : 'bg-[#0B0F14] text-gray-300 border-[#232B36] hover:bg-[#1E2633]'
-                      }`}
-                    >
-                      Pessoa Física (PF)
-                    </button>
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="finNome"
-                    className="text-xs uppercase text-gray-300 font-semibold"
-                  >
-                    Nome da Entidade / Razão Social *
-                  </Label>
-                  <Input
-                    id="finNome"
-                    required
-                    value={finNome}
-                    onChange={(e) => setFinNome(e.target.value)}
-                    placeholder={
-                      finTipo === 'PJ' ? 'Ex: Alfa Tecnologia Ltda' : 'Ex: João da Silva (Pessoal)'
-                    }
-                    className="bg-[#0B0F14] border-[#232B36] text-white"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label
-                    htmlFor="cpfCnpj"
-                    className="text-xs uppercase text-gray-300 font-semibold"
-                  >
-                    {finTipo === 'PJ' ? 'CNPJ' : 'CPF'}
-                  </Label>
-                  <Input
-                    id="cpfCnpj"
-                    value={finCpfCnpj}
-                    onChange={(e) => setFinCpfCnpj(e.target.value)}
-                    placeholder={finTipo === 'PJ' ? '00.000.000/0001-00' : '000.000.000-00'}
-                    className="bg-[#0B0F14] border-[#232B36] text-white"
-                  />
-                </div>
-
-                {finTipo === 'PJ' ? (
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="regime"
-                      className="text-xs uppercase text-gray-300 font-semibold"
-                    >
-                      Regime Tributário
-                    </Label>
-                    <select
-                      id="regime"
-                      value={finRegime}
-                      onChange={(e) => setFinRegime(e.target.value)}
-                      className="w-full h-10 px-3 rounded-md bg-[#0B0F14] border border-[#232B36] text-white text-sm"
-                    >
-                      <option value="Simples Nacional">Simples Nacional</option>
-                      <option value="Lucro Presumido">Lucro Presumido</option>
-                      <option value="Lucro Real">Lucro Real</option>
-                      <option value="MEI">MEI (Microempreendedor Individual)</option>
-                    </select>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="socios"
-                      className="text-xs uppercase text-gray-300 font-semibold"
-                    >
-                      Identificação / Ocupação
-                    </Label>
-                    <Input
-                      id="socios"
-                      value={finSocios}
-                      onChange={(e) => setFinSocios(e.target.value)}
-                      placeholder="Ex: Titular / Sócio Majoritário"
+                          ? 'Ex: Alfa Tecnologia Ltda'
+                          : 'Ex: João da Silva (Pessoal)'
+                      }
                       className="bg-[#0B0F14] border-[#232B36] text-white"
                     />
                   </div>
-                )}
 
-                {finTipo === 'PJ' && (
-                  <div className="space-y-2 md:col-span-2">
+                  <div className="space-y-2">
                     <Label
-                      htmlFor="sociosPj"
+                      htmlFor="cpfCnpj"
                       className="text-xs uppercase text-gray-300 font-semibold"
                     >
-                      Sócios / Quadro Societário
+                      {finTipo === 'PJ' ? 'CNPJ' : 'CPF'}
                     </Label>
                     <Input
-                      id="sociosPj"
-                      value={finSocios}
-                      onChange={(e) => setFinSocios(e.target.value)}
-                      placeholder="Ex: João Silva (50%), Maria Santos (50%)"
+                      id="cpfCnpj"
+                      value={finCpfCnpj}
+                      onChange={(e) => setFinCpfCnpj(e.target.value)}
+                      placeholder={finTipo === 'PJ' ? '00.000.000/0001-00' : '000.000.000-00'}
                       className="bg-[#0B0F14] border-[#232B36] text-white"
                     />
                   </div>
-                )}
 
-                <div className="space-y-2">
-                  <Label className="text-xs uppercase text-gray-300 font-semibold">
-                    Cor de Identificação no Sistema
-                  </Label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={finCor}
-                      onChange={(e) => setFinCor(e.target.value)}
-                      className="w-10 h-10 rounded border border-[#232B36] bg-transparent cursor-pointer"
-                    />
-                    <div className="flex gap-2">
-                      {['#00D68F', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981'].map(
-                        (c) => (
-                          <button
-                            key={c}
-                            type="button"
-                            aria-label={`Escolher cor ${c}`}
-                            onClick={() => setFinCor(c)}
-                            className="w-6 h-6 rounded-full border border-white/20 transition-transform hover:scale-110 cursor-pointer"
-                            style={{ backgroundColor: c }}
-                          />
-                        ),
-                      )}
+                  {finTipo === 'PJ' ? (
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="regime"
+                        className="text-xs uppercase text-gray-300 font-semibold"
+                      >
+                        Regime Tributário
+                      </Label>
+                      <select
+                        id="regime"
+                        value={finRegime}
+                        onChange={(e) => setFinRegime(e.target.value)}
+                        className="w-full h-10 px-3 rounded-md bg-[#0B0F14] border border-[#232B36] text-white text-sm"
+                      >
+                        <option value="Simples Nacional">Simples Nacional</option>
+                        <option value="Lucro Presumido">Lucro Presumido</option>
+                        <option value="Lucro Real">Lucro Real</option>
+                        <option value="MEI">MEI (Microempreendedor Individual)</option>
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label
+                        htmlFor="socios"
+                        className="text-xs uppercase text-gray-300 font-semibold"
+                      >
+                        Identificação / Ocupação
+                      </Label>
+                      <Input
+                        id="socios"
+                        value={finSocios}
+                        onChange={(e) => setFinSocios(e.target.value)}
+                        placeholder="Ex: Titular / Sócio Majoritário"
+                        className="bg-[#0B0F14] border-[#232B36] text-white"
+                      />
+                    </div>
+                  )}
+
+                  {finTipo === 'PJ' && (
+                    <div className="space-y-2 md:col-span-2">
+                      <Label
+                        htmlFor="sociosPj"
+                        className="text-xs uppercase text-gray-300 font-semibold"
+                      >
+                        Sócios / Quadro Societário
+                      </Label>
+                      <Input
+                        id="sociosPj"
+                        value={finSocios}
+                        onChange={(e) => setFinSocios(e.target.value)}
+                        placeholder="Ex: João Silva (50%), Maria Santos (50%)"
+                        className="bg-[#0B0F14] border-[#232B36] text-white"
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="text-xs uppercase text-gray-300 font-semibold">
+                      Cor de Identificação no Sistema
+                    </Label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="color"
+                        value={finCor}
+                        onChange={(e) => setFinCor(e.target.value)}
+                        className="w-10 h-10 rounded border border-[#232B36] bg-transparent cursor-pointer"
+                      />
+                      <div className="flex gap-2">
+                        {['#00D68F', '#3B82F6', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981'].map(
+                          (c) => (
+                            <button
+                              key={c}
+                              type="button"
+                              aria-label={`Escolher cor ${c}`}
+                              onClick={() => setFinCor(c)}
+                              className="w-6 h-6 rounded-full border border-white/20 transition-transform hover:scale-110 cursor-pointer"
+                              style={{ backgroundColor: c }}
+                            />
+                          ),
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </CardContent>
-            <CardFooter className="flex justify-end border-t border-[#232B36] pt-4">
-              <Button
-                type="submit"
-                disabled={savingStep}
-                className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-semibold cursor-pointer"
-              >
-                {savingStep ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  <>
-                    Avançar para Contas Bancárias
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </>
-                )}
-              </Button>
-            </CardFooter>
-          </form>
+              </CardContent>
+              <CardFooter className="flex justify-end border-t border-[#232B36] pt-4">
+                <Button
+                  type="submit"
+                  disabled={savingStep}
+                  className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-semibold cursor-pointer"
+                >
+                  {savingStep ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      Avançar para Contas Bancárias
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </>
+                  )}
+                </Button>
+              </CardFooter>
+            </form>
+          )}
         </Card>
       )}
 
