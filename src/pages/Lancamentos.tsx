@@ -183,6 +183,23 @@ export default function LancamentosPage() {
   // Usado para detectar o caso "plano de contas vazio".
   const planosDoFinanceiroQualquerTipo = useMemo(() => planos, [planos])
 
+  // Saldo ATUAL por financeiro = saldos iniciais das contas + lançamentos realizados
+  // (crédito − débito). Mesma fórmula do Painel (Index) — previsto NÃO altera o saldo.
+  const saldosPorFinanceiro = useMemo(() => {
+    const saldos: Record<string, number> = {}
+    for (const f of financeiros) saldos[f.id] = 0
+    for (const c of contas) {
+      if (saldos[c.financeiro_id] === undefined) continue
+      saldos[c.financeiro_id] += Number(c.saldo_inicial)
+    }
+    for (const l of lancamentos) {
+      if (l.status !== 'realizado') continue
+      if (saldos[l.financeiro_id] === undefined) continue
+      saldos[l.financeiro_id] += l.tipo === 'credito' ? Number(l.valor) : -Number(l.valor)
+    }
+    return saldos
+  }, [financeiros, contas, lancamentos])
+
   const semPlanoContas = !!selectedFinId && planosDoFinanceiroQualquerTipo.length === 0
 
   // Atualiza selects padrão ao trocar financeiro ou tipo — exceto quando está editando
@@ -570,12 +587,9 @@ export default function LancamentosPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
               {financeiros.map((f) => {
                 const isSelected = selectedFinId === f.id
-                // Contas e saldo total deste financeiro
+                // Contas e saldo ATUAL deste financeiro (base + lançamentos realizados)
                 const finContas = contas.filter((c) => c.financeiro_id === f.id)
-                const saldoContas = finContas.reduce(
-                  (acc, cur) => acc + Number(cur.saldo_inicial),
-                  0,
-                )
+                const saldoContas = saldosPorFinanceiro[f.id] ?? 0
 
                 return (
                   <button
@@ -619,8 +633,12 @@ export default function LancamentosPage() {
                       <p className="text-[11px] text-gray-400 mt-1 truncate">
                         {finContas.length} conta(s) bancária(s)
                       </p>
-                      <div className="mt-2 text-xs font-mono font-semibold text-gray-300">
-                        Base: {formatCurrency(saldoContas)}
+                      <div
+                        className={`mt-2 text-xs font-mono font-semibold ${
+                          saldoContas < 0 ? 'text-[#FF5C5C]' : 'text-gray-300'
+                        }`}
+                      >
+                        Saldo: {formatCurrency(saldoContas)}
                       </div>
                     </div>
                   </button>
