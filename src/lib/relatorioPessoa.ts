@@ -1,4 +1,4 @@
-// Lógica pura do Relatório por Pessoa (contraparte): busca, filtros, totais e CSV.
+// Lógica pura do Extrato por Favorecido (contraparte): busca, filtros, totais e CSV.
 import { Lancamento } from '@/types/financeiro'
 import { formatDateBR } from '@/lib/formatters'
 import { valorCSV } from '@/lib/csv'

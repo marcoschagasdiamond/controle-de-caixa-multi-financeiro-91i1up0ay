@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { AuthProvider } from '@/hooks/use-auth'
 import { Toaster } from '@/components/ui/toaster'
 import Layout from '@/components/Layout'
@@ -31,7 +31,8 @@ const router = createBrowserRouter([
       { path: 'mutuos', element: <MutuosPage /> },
       { path: 'fechamento', element: <FechamentoPage /> },
       { path: 'comparativo-anual', element: <ComparativoAnualPage /> },
-      { path: 'relatorio-pessoa', element: <RelatorioPessoaPage /> },
+      { path: 'extrato-favorecido', element: <RelatorioPessoaPage /> },
+      { path: 'relatorio-pessoa', element: <Navigate to="/extrato-favorecido" replace /> },
       { path: 'configuracoes', element: <ConfiguracoesPage /> },
       { path: '*', element: <NotFound /> },
     ],

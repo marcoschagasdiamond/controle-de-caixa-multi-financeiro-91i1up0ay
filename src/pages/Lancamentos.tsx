@@ -108,6 +108,7 @@ export default function LancamentosPage() {
 
   // Mensagens de erro com destaque especial para violação de segregação
   const [formError, setFormError] = useState<string | null>(null)
+  const [erroContraparte, setErroContraparte] = useState<string | null>(null)
 
   // Filtros da Listagem
   const [filtroFin, setFiltroFin] = useState<string>('todos')
@@ -241,6 +242,7 @@ export default function LancamentosPage() {
     setTotalParcelas('')
     setFormTitle(`Editando: ${l.descricao || 'lançamento'}`)
     setFormError(null)
+    setErroContraparte(null)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -258,6 +260,7 @@ export default function LancamentosPage() {
     setTipoRecorrencia('nenhuma')
     setTotalParcelas('')
     setFormError(null)
+    setErroContraparte(null)
   }
 
   // Salvar lançamento (criação ou edição do registro existente)
@@ -275,6 +278,11 @@ export default function LancamentosPage() {
     }
     if (!selectedPlanoId) {
       setFormError('Selecione uma categoria do plano de contas.')
+      return
+    }
+    if (!contraparte.trim()) {
+      setFormError('Informe a Contraparte (fornecedor/cliente) do lançamento.')
+      setErroContraparte('Obrigatório: informe o favorecido/pagador.')
       return
     }
 
@@ -379,6 +387,7 @@ export default function LancamentosPage() {
       setDescricao('')
       setValor('')
       setContraparte('')
+      setErroContraparte(null)
       setDocumento('')
       setObservacao('')
       setDataLancamento(getTodayISODate())
@@ -888,15 +897,27 @@ export default function LancamentosPage() {
 
               {/* Contraparte */}
               <div className="space-y-1">
-                <Label className="text-xs text-gray-400 font-medium">
-                  Contraparte / Fornecedor / Cliente
+                <Label htmlFor="contraparte" className="text-xs text-gray-400 font-medium">
+                  Contraparte / Fornecedor / Cliente *
                 </Label>
                 <Input
+                  id="contraparte"
                   value={contraparte}
-                  onChange={(e) => setContraparte(e.target.value)}
+                  onChange={(e) => {
+                    setContraparte(e.target.value)
+                    if (erroContraparte) setErroContraparte(null)
+                  }}
                   placeholder="Nome do favorecido/pagador"
-                  className="bg-[#0B0F14] border-[#232B36] text-white"
+                  aria-invalid={!!erroContraparte}
+                  className={`bg-[#0B0F14] text-white ${
+                    erroContraparte ? 'border-[#FF5C5C]' : 'border-[#232B36]'
+                  }`}
                 />
+                {erroContraparte && (
+                  <p role="alert" className="text-[11px] text-[#FF5C5C] font-medium">
+                    {erroContraparte}
+                  </p>
+                )}
               </div>
 
               {/* Documento */}

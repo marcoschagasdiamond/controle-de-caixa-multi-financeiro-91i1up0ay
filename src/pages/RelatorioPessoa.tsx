@@ -59,7 +59,7 @@ export default function RelatorioPessoaPage() {
   const hoje = getTodayISODate()
 
   useEffect(() => {
-    document.title = 'Relatório por Pessoa | Multi-Financeiro'
+    document.title = 'Extrato por Favorecido | Multi-Financeiro'
   }, [])
 
   // Carrega TODOS os lançamentos (qualquer status) e contas acessíveis pelo RLS
@@ -136,7 +136,7 @@ export default function RelatorioPessoaPage() {
     <div className="space-y-6">
       {/* Cabeçalho */}
       <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Relatório por Pessoa</h1>
+        <h1 className="text-2xl font-bold text-white tracking-tight">Extrato por Favorecido</h1>
         <p className="text-sm text-gray-400">
           Pagamentos e recebimentos de uma contraparte, cruzando todas as empresas e contas.
         </p>
