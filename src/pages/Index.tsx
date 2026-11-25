@@ -137,6 +137,19 @@ export default function Index() {
     return base
   }, [contasFiltradas, lancamentosFiltrados])
 
+  // SALDO POR CONTA BANCÁRIA (financeiro selecionado) — mesma fórmula do card da empresa
+  // em Lançamentos: saldo inicial da conta + lançamentos realizados (crédito − débito) por conta_id.
+  const saldosPorConta = useMemo(() => {
+    return contasFiltradas.map((c) => {
+      let saldo = Number(c.saldo_inicial)
+      for (const l of lancamentosFiltrados) {
+        if (l.conta_id !== c.id || l.status !== 'realizado') continue
+        saldo += l.tipo === 'credito' ? Number(l.valor) : -Number(l.valor)
+      }
+      return { id: c.id, banco: c.banco, conta: c.conta, saldo }
+    })
+  }, [contasFiltradas, lancamentosFiltrados])
+
   // 2. Entradas do Mês Atual
   const mesAtualStr = useMemo(() => {
     const d = new Date()
@@ -587,6 +600,40 @@ export default function Index() {
           </p>
         </Card>
       </div>
+
+      {/* SALDO POR CONTA BANCÁRIA: cards individuais do financeiro selecionado (o geral acima permanece) */}
+      {selectedFinId !== 'todos' && saldosPorConta.length > 0 && (
+        <section aria-labelledby="titulo-saldo-por-conta" className="space-y-3">
+          <h2 id="titulo-saldo-por-conta" className="text-xs text-gray-400 font-semibold uppercase">
+            Saldo por conta bancária
+          </h2>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {saldosPorConta.map((c) => (
+              <li key={c.id}>
+                <Card className="bg-[#141A22] border-[#232B36] p-4 text-white shadow-lg h-full">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-gray-400 font-semibold uppercase truncate">
+                      {c.banco}
+                    </span>
+                    <DollarSign className="w-4 h-4 text-[#00D68F]" />
+                  </div>
+                  <div
+                    className={`text-xl font-bold font-mono mt-1 ${
+                      c.saldo < 0 ? 'text-[#FF5C5C]' : 'text-white'
+                    }`}
+                  >
+                    {formatCurrency(c.saldo)}
+                  </div>
+                  <p className="text-[10px] text-gray-500 mt-1">
+                    Conta {c.conta}
+                    {c.saldo < 0 ? ' · saldo negativo' : ''}
+                  </p>
+                </Card>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* ALERTA DIÁRIO: Contas fixas vencidas e vencendo nos próximos 7 dias */}
       <AlertaContasFixas
