@@ -13,6 +13,7 @@ import MutuosPage from '@/pages/Mutuos'
 import FechamentoPage from '@/pages/Fechamento'
 import ConfiguracoesPage from '@/pages/Configuracoes'
 import ComparativoAnualPage from '@/pages/ComparativoAnual'
+import RelatorioPessoaPage from '@/pages/RelatorioPessoa'
 import NotFound from '@/pages/NotFound'
 
 const router = createBrowserRouter([
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
       { path: 'mutuos', element: <MutuosPage /> },
       { path: 'fechamento', element: <FechamentoPage /> },
       { path: 'comparativo-anual', element: <ComparativoAnualPage /> },
+      { path: 'relatorio-pessoa', element: <RelatorioPessoaPage /> },
       { path: 'configuracoes', element: <ConfiguracoesPage /> },
       { path: '*', element: <NotFound /> },
     ],
