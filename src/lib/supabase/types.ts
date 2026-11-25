@@ -203,6 +203,7 @@ export type Database = {
           member_user_id: string
           owner_user_id: string
           papel: string
+          pode_criar_empresas: boolean
           updated_at: string
         }
         Insert: {
@@ -212,6 +213,7 @@ export type Database = {
           member_user_id: string
           owner_user_id: string
           papel?: string
+          pode_criar_empresas?: boolean
           updated_at?: string
         }
         Update: {
@@ -221,6 +223,7 @@ export type Database = {
           member_user_id?: string
           owner_user_id?: string
           papel?: string
+          pode_criar_empresas?: boolean
           updated_at?: string
         }
         Relationships: [
@@ -931,6 +934,7 @@ export type Database = {
           financeiro_ids: string[]
           member_user_id: string
           nome: string
+          pode_criar_empresas: boolean
         }[]
       }
       mover_categoria_para_grupo: {
