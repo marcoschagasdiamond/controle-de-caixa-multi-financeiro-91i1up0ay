@@ -201,7 +201,10 @@ function montarBloco(
     saidaGrupos.push({ grupo: null, linhas: semGrupo, subtotal, temProjecaoMes })
   }
 
-  return { grupos: saidaGrupos, total, temProjecao }
+  const temProjecaoMes = Array.from({ length: 12 }, (_, i) =>
+    saidaGrupos.some((g) => g.temProjecaoMes[i]),
+  )
+  return { grupos: saidaGrupos, total, temProjecao, temProjecaoMes }
 }
 
 const somaPeriodo = (valores: number[]) => valores.reduce((a, b) => a + b, 0)
@@ -297,7 +300,7 @@ export default function DREPage() {
     () =>
       modoAno && incluirProjecao && selectedFinId
         ? calcularProjecaoPorPlano(anoSel, recorrentes, lancamentos, selectedFinId)
-        : new Map(),
+        : new Map<string, number[]>(),
     [modoAno, incluirProjecao, selectedFinId, anoSel, recorrentes, lancamentos],
   )
 
@@ -313,7 +316,12 @@ export default function DREPage() {
             selectedFinId,
             modoAno && incluirProjecao ? projecaoPorPlano : undefined,
           )
-        : { grupos: [], total: Array.from({ length: 12 }, () => 0) },
+        : {
+            grupos: [],
+            total: Array.from({ length: 12 }, () => 0),
+            temProjecao: false,
+            temProjecaoMes: Array.from({ length: 12 }, () => false),
+          },
     [
       prefixoPeriodo,
       planos,
@@ -338,7 +346,12 @@ export default function DREPage() {
             selectedFinId,
             modoAno && incluirProjecao ? projecaoPorPlano : undefined,
           )
-        : { grupos: [], total: Array.from({ length: 12 }, () => 0) },
+        : {
+            grupos: [],
+            total: Array.from({ length: 12 }, () => 0),
+            temProjecao: false,
+            temProjecaoMes: Array.from({ length: 12 }, () => false),
+          },
     [
       prefixoPeriodo,
       planos,
