@@ -125,6 +125,16 @@ function montarBloco(
   const mapa = new Map<string, number[]>()
   const marcasProj = new Map<string, boolean[]>()
 
+  // Guardas defensivas: nenhum argumento de lista pode ser undefined em
+  // nenhum momento do carregamento (crash histórico no preview:
+  // "undefined is not an object (evaluating 'l of lancamentos')").
+  planos = Array.isArray(planos) ? planos : []
+  grupos = Array.isArray(grupos) ? grupos : []
+  lancamentos = Array.isArray(lancamentos) ? lancamentos : []
+  projecao = projecao instanceof Map ? projecao : new Map()
+  orcados = orcados instanceof Map ? orcados : new Map()
+  if (!finId) return blocoVazio()
+
   for (const l of lancamentos) {
     if (l.status !== 'realizado') continue
     if (l.financeiro_id !== finId) continue
