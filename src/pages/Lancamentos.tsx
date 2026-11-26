@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { FinanceiroService } from '@/services/financeiro'
 import { Financeiro, ContaBancaria, PlanoConta, Lancamento } from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
@@ -62,6 +62,8 @@ export default function LancamentosPage() {
   // Edição: id do lançamento sendo editado (null = modo criação)
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const [formTitle, setFormTitle] = useState('Novo Lançamento em 3 Passos')
+  // Cartão do formulário: alvo rolável ao entrar em edição (o scroll real é o <main> do Layout)
+  const formularioRef = useRef<HTMLDivElement>(null)
 
   // Formulário em 3 Passos
   // Passo 1: Escolha do Financeiro
@@ -243,7 +245,13 @@ export default function LancamentosPage() {
     setFormTitle(`Editando: ${l.descricao || 'lançamento'}`)
     setFormError(null)
     setErroContraparte(null)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    // window.scrollTo não rola: o contêiner de rolagem é o <main> do Layout.
+    // scrollIntoView rola todos os ancestrais roláveis até o formulário.
+    const reduzirMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    formularioRef.current?.scrollIntoView({
+      behavior: reduzirMovimento ? 'auto' : 'smooth',
+      block: 'start',
+    })
   }
 
   // Cancela a edição e volta ao modo de criação
@@ -546,7 +554,12 @@ export default function LancamentosPage() {
       </div>
 
       {/* FORMULÁRIO EM 3 PASSOS */}
-      <Card className="bg-[#141A22] border-[#232B36] text-white shadow-2xl">
+      <Card
+        ref={formularioRef}
+        className={`bg-[#141A22] text-white shadow-2xl scroll-mt-4 transition-colors ${
+          editandoId ? 'border-2 border-[#FFB020] ring-4 ring-[#FFB020]/20' : 'border-[#232B36]'
+        }`}
+      >
         <CardHeader className="pb-4 border-b border-[#232B36]">
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg font-bold flex items-center gap-2 text-white">
