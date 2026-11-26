@@ -9,7 +9,11 @@ import { formatCurrency } from '@/lib/formatters'
 import { recorrenteOcorreEm } from '@/lib/recorrentes'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { CalendarClock } from 'lucide-react'
+import { CalendarClock, Pencil, Trash2 } from 'lucide-react'
+
+// Uma linha da projeção sabe se é recorrente por ter id "r-<uuid>"
+const ehLinhaRecorrente = (id: string) => id.startsWith('r-')
+const idRecorrenteDaLinha = (id: string) => id.slice(2)
 
 const MESES = [
   'jan',
@@ -30,9 +34,19 @@ interface Props {
   recorrentes: LancamentoRecorrente[]
   lancamentos: Lancamento[]
   financeiros: Financeiro[]
+  podeGerenciar: (r: LancamentoRecorrente) => boolean
+  onEditar: (r: LancamentoRecorrente) => void
+  onExcluir: (r: LancamentoRecorrente) => void
 }
 
-export default function TabelaAnualRecorrentes({ recorrentes, lancamentos, financeiros }: Props) {
+export default function TabelaAnualRecorrentes({
+  recorrentes,
+  lancamentos,
+  financeiros,
+  podeGerenciar,
+  onEditar,
+  onExcluir,
+}: Props) {
   const ano = useMemo(() => new Date().getFullYear(), [])
 
   // Linhas de recorrentes/parcelados: valor previsto em cada um dos 12 meses.
@@ -82,6 +96,13 @@ export default function TabelaAnualRecorrentes({ recorrentes, lancamentos, finan
     () => [...linhasRecorrentes, ...linhasAvulsos],
     [linhasRecorrentes, linhasAvulsos],
   )
+
+  // Recorrente original por id de linha "r-<id>" — para as ações editar/excluir
+  const recorrentePorLinha = useMemo(() => {
+    const mapa = new Map<string, LancamentoRecorrente>()
+    recorrentes.forEach((r) => mapa.set(`r-${r.id}`, r))
+    return mapa
+  }, [recorrentes])
 
   const totaisMes = useMemo(() => {
     const despesas = Array.from({ length: 12 }, () => 0)
@@ -150,11 +171,17 @@ export default function TabelaAnualRecorrentes({ recorrentes, lancamentos, finan
                 <th className="py-2.5 px-4 text-right" scope="col">
                   Total Ano
                 </th>
+                <th className="py-2.5 px-3 text-center" scope="col">
+                  Ações
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#232B36]">
               {linhas.map((l) => {
                 const totalLinha = l.valores.reduce((a, b) => a + b, 0)
+                const recorrente = ehLinhaRecorrente(l.id)
+                  ? recorrentePorLinha.get(l.id)
+                  : undefined
                 return (
                   <tr key={l.id} className="hover:bg-[#1A222D]/50 transition-colors">
                     <td className="py-2.5 px-4 sticky left-0 bg-[#141A22]">
@@ -188,6 +215,34 @@ export default function TabelaAnualRecorrentes({ recorrentes, lancamentos, finan
                       }`}
                     >
                       {formatCurrency(totalLinha)}
+                    </td>
+                    <td className="py-2.5 px-3 text-center whitespace-nowrap">
+                      {recorrente && podeGerenciar(recorrente) ? (
+                        <div className="inline-flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onEditar(recorrente)}
+                            title="Editar recorrente"
+                            aria-label={`Editar recorrente ${l.desc}`}
+                            className="p-1.5 text-gray-500 hover:text-[#00D68F] hover:bg-[#00D68F]/10 rounded transition-colors cursor-pointer"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onExcluir(recorrente)}
+                            title="Excluir recorrente"
+                            aria-label={`Excluir recorrente ${l.desc}`}
+                            className="p-1.5 text-gray-500 hover:text-[#FF5C5C] hover:bg-[#FF5C5C]/10 rounded transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-gray-700 text-xs" title="Sem permissão para alterar">
+                          —
+                        </span>
+                      )}
                     </td>
                   </tr>
                 )

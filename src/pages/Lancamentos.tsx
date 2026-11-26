@@ -1,4 +1,14 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { FinanceiroService } from '@/services/financeiro'
 import { Financeiro, ContaBancaria, PlanoConta, Lancamento } from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
@@ -41,6 +51,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useNavigate } from 'react-router-dom'
 import { baixarCSV, valorCSV } from '@/lib/csv'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
+import { useAuth } from '@/hooks/use-auth'
 import { dataUltimaParcela, mesPorExtenso } from '@/lib/recorrentes'
 import { CalendarClock, Repeat, Pencil, X } from 'lucide-react'
 import TabelaAnualRecorrentes from '@/components/TabelaAnualRecorrentes'
@@ -61,6 +72,12 @@ export default function LancamentosPage() {
   const [saving, setSaving] = useState(false)
   // Edição: id do lançamento sendo editado (null = modo criação)
   const [editandoId, setEditandoId] = useState<string | null>(null)
+  // Edição de RECORRENTE (vindo da Projeção Anual): id do recorrente em edição
+  const [editandoRecorrenteId, setEditandoRecorrenteId] = useState<string | null>(null)
+  // Recorrente aguardando confirmação de exclusão (AlertDialog da Projeção Anual)
+  const [recorrenteParaExcluir, setRecorrenteParaExcluir] = useState<LancamentoRecorrente | null>(
+    null,
+  )
   const [formTitle, setFormTitle] = useState('Novo Lançamento em 3 Passos')
   // Cartão do formulário: alvo rolável ao entrar em edição (o scroll real é o <main> do Layout)
   const formularioRef = useRef<HTMLDivElement>(null)
@@ -123,6 +140,16 @@ export default function LancamentosPage() {
 
   // Financeiros visíveis ao usuário logado (master = todos; membro = só liberados)
   const { financeiros: finsAcesso } = useAcessoFinanceiros()
+  const { user } = useAuth()
+
+  // Mesma regra do RLS (auth_all_lancamentos_recorrentes): pode alterar quem é
+  // dono do registro (user_id = auth.uid()) OU tem acesso ao financeiro
+  // (master vê todas; membro vê as liberadas via equipe_membros + as suas).
+  const podeGerenciarRecorrente = useCallback(
+    (r: LancamentoRecorrente) =>
+      r.user_id === user?.id || finsAcesso.some((f) => f.id === r.financeiro_id),
+    [user, finsAcesso],
+  )
 
   // Pré-selecionar o primeiro financeiro acessível caso não haja seleção
   useEffect(() => {
@@ -172,9 +199,10 @@ export default function LancamentosPage() {
   const planosDoFinanceiro = useMemo(() => {
     // Em edição não filtramos pelo tipo do passo 2: garante que a categoria carregada
     // do lançamento apareça no combobox mesmo que o usuário troque o tipo.
-    if (editandoId) return planos
+    // Vale também na edição de recorrente (categoria carregada deve aparecer).
+    if (editandoId || editandoRecorrenteId) return planos
     return planos.filter((p) => p.tipo === (tipoLancamento === 'credito' ? 'receita' : 'despesa'))
-  }, [planos, tipoLancamento, editandoId])
+  }, [planos, tipoLancamento, editandoId, editandoRecorrenteId])
 
   // Categoria escolhida no combobox (exibida no botão)
   const planoSelecionado = useMemo(
@@ -208,26 +236,27 @@ export default function LancamentosPage() {
   // Atualiza selects padrão ao trocar financeiro ou tipo — exceto quando está editando
   // (a conta e a categoria carregadas do lançamento devem permanecer).
   useEffect(() => {
-    if (editandoId) return
+    if (editandoId || editandoRecorrenteId) return
     if (contasDoFinanceiro.length > 0) {
       setSelectedContaId(contasDoFinanceiro[0].id)
     } else {
       setSelectedContaId('')
     }
-  }, [selectedFinId, contasDoFinanceiro, editandoId])
+  }, [selectedFinId, contasDoFinanceiro, editandoId, editandoRecorrenteId])
 
   useEffect(() => {
-    if (editandoId) return
+    if (editandoId || editandoRecorrenteId) return
     if (planosDoFinanceiro.length > 0) {
       setSelectedPlanoId(planosDoFinanceiro[0].id)
     } else {
       setSelectedPlanoId('')
     }
-  }, [selectedFinId, tipoLancamento, planosDoFinanceiro, editandoId])
+  }, [selectedFinId, tipoLancamento, planosDoFinanceiro, editandoId, editandoRecorrenteId])
 
   // Inicia a edição: carrega o lançamento no formulário e rola até ele
   const iniciarEdicao = (l: Lancamento) => {
     setEditandoId(l.id)
+    setEditandoRecorrenteId(null)
     setSelectedFinId(l.financeiro_id)
     setTipoLancamento(l.tipo)
     setDescricao(l.descricao)
@@ -257,6 +286,7 @@ export default function LancamentosPage() {
   // Cancela a edição e volta ao modo de criação
   const cancelarEdicao = () => {
     setEditandoId(null)
+    setEditandoRecorrenteId(null)
     setFormTitle('Novo Lançamento em 3 Passos')
     setDescricao('')
     setValor('')
@@ -269,6 +299,33 @@ export default function LancamentosPage() {
     setTotalParcelas('')
     setFormError(null)
     setErroContraparte(null)
+  }
+
+  // Inicia a edição de um RECORRENTE (vindo da Projeção Anual de Recorrentes):
+  // carrega os dados no formulário em 3 passos, com destaque âmbar e rolagem.
+  const iniciarEdicaoRecorrente = (r: LancamentoRecorrente) => {
+    setEditandoId(null)
+    setEditandoRecorrenteId(r.id)
+    setSelectedFinId(r.financeiro_id)
+    setTipoLancamento(r.tipo)
+    setDescricao(r.descricao)
+    setValor(String(r.valor))
+    setDataLancamento(r.data_inicial)
+    setStatusLancamento('previsto')
+    setSelectedContaId(r.conta_id)
+    setSelectedPlanoId(r.plano_conta_id)
+    setTipoRecorrencia(r.total_parcelas && r.total_parcelas > 0 ? 'parcelada' : 'continua')
+    setTotalParcelas(r.total_parcelas ? String(r.total_parcelas) : '')
+    setFormTitle(`Editando: ${r.descricao || 'recorrente'}`)
+    setFormError(null)
+    setErroContraparte(null)
+    // window.scrollTo não rola: o contêiner de rolagem é o <main> do Layout.
+    // scrollIntoView rola todos os ancestrais roláveis até o formulário.
+    const reduzirMovimento = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    formularioRef.current?.scrollIntoView({
+      behavior: reduzirMovimento ? 'auto' : 'smooth',
+      block: 'start',
+    })
   }
 
   // Salvar lançamento (criação ou edição do registro existente)
@@ -288,7 +345,8 @@ export default function LancamentosPage() {
       setFormError('Selecione uma categoria do plano de contas.')
       return
     }
-    if (!contraparte.trim()) {
+    // Recorrente não tem contraparte (o campo não existe na tabela de recorrentes)
+    if (!editandoRecorrenteId && !contraparte.trim()) {
       setFormError('Informe a Contraparte (fornecedor/cliente) do lançamento.')
       setErroContraparte('Obrigatório: informe o favorecido/pagador.')
       return
@@ -309,6 +367,33 @@ export default function LancamentosPage() {
 
     try {
       setSaving(true)
+
+      // MODO EDIÇÃO DE RECORRENTE: atualiza a programação (sem criar lançamento).
+      // dia_mes vem do dia da data informada; em modo contínuo limpa total_parcelas.
+      if (editandoRecorrenteId) {
+        await FinanceiroService.updateLancamentoRecorrente(editandoRecorrenteId, {
+          financeiro_id: selectedFinId,
+          conta_id: selectedContaId,
+          plano_conta_id: selectedPlanoId,
+          tipo: tipoLancamento,
+          valor: valorNum,
+          descricao: descricao.trim(),
+          dia_mes: Math.max(1, Math.min(Number(dataLancamento.slice(8, 10)) || 1, 31)),
+          data_inicial: dataLancamento,
+          ...(tipoRecorrencia === 'parcelada'
+            ? { total_parcelas: nParcelas }
+            : { total_parcelas: null }),
+        })
+        toast({
+          title: 'Recorrente atualizado com sucesso!',
+          description: `"${descricao.trim()}" atualizado — a projeção anual e o Fluxo de Caixa passam a usar os novos dados.`,
+        })
+        cancelarEdicao()
+        // Recarrega a projeção (recorrentes) com os dados atualizados
+        const rcs = await FinanceiroService.getLancamentosRecorrentes()
+        setRecorrentes(rcs)
+        return
+      }
 
       // MODO EDIÇÃO: atualiza o registro existente (sem duplicar)
       if (editandoId) {
@@ -426,6 +511,27 @@ export default function LancamentosPage() {
       toast({
         variant: 'destructive',
         title: 'Erro ao excluir',
+        description: err.message,
+      })
+    }
+  }
+
+  // Exclui um RECORRENTE (após confirmação no AlertDialog da Projeção Anual):
+  // remove a programação; as ocorrências futuras saem da projeção e do Fluxo
+  // de Caixa (os lançamentos já realizados NÃO são apagados).
+  const handleExcluirRecorrente = async (r: LancamentoRecorrente) => {
+    try {
+      await FinanceiroService.deleteLancamentoRecorrente(r.id)
+      setRecorrentes((prev) => prev.filter((x) => x.id !== r.id))
+      if (editandoRecorrenteId === r.id) cancelarEdicao()
+      toast({
+        title: 'Recorrente excluído',
+        description: `"${r.descricao}" removido — as ocorrências futuras saem da projeção.`,
+      })
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao excluir recorrente',
         description: err.message,
       })
     }
@@ -557,7 +663,9 @@ export default function LancamentosPage() {
       <Card
         ref={formularioRef}
         className={`bg-[#141A22] text-white shadow-2xl scroll-mt-4 transition-colors ${
-          editandoId ? 'border-2 border-[#FFB020] ring-4 ring-[#FFB020]/20' : 'border-[#232B36]'
+          editandoId || editandoRecorrenteId
+            ? 'border-2 border-[#FFB020] ring-4 ring-[#FFB020]/20'
+            : 'border-[#232B36]'
         }`}
       >
         <CardHeader className="pb-4 border-b border-[#232B36]">
@@ -566,7 +674,7 @@ export default function LancamentosPage() {
               <PlusCircle className="w-5 h-5 text-[#00D68F]" />
               {formTitle}
             </CardTitle>
-            {editandoId ? (
+            {editandoId || editandoRecorrenteId ? (
               <Button
                 type="button"
                 variant="outline"
@@ -1063,7 +1171,7 @@ export default function LancamentosPage() {
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       Gravando com Isolamento...
                     </>
-                  ) : editandoId ? (
+                  ) : editandoId || editandoRecorrenteId ? (
                     <>
                       <CheckCircle2 className="w-4 h-4 mr-2" />
                       Salvar Alterações
@@ -1324,6 +1432,9 @@ export default function LancamentosPage() {
         recorrentes={recorrentes}
         lancamentos={lancamentos}
         financeiros={financeiros}
+        podeGerenciar={podeGerenciarRecorrente}
+        onEditar={iniciarEdicaoRecorrente}
+        onExcluir={(r) => setRecorrenteParaExcluir(r)}
       />
 
       {/* RECEBÍVEIS SEM DATA: contratos a receber sem data definida, fora da projeção */}
@@ -1332,6 +1443,45 @@ export default function LancamentosPage() {
         planos={planos}
         financeiroPadraoId={filtroFin !== 'todos' ? filtroFin : undefined}
       />
+
+      {/* Confirmação de exclusão de recorrente (Projeção Anual) */}
+      <AlertDialog
+        open={!!recorrenteParaExcluir}
+        onOpenChange={(aberto) => {
+          if (!aberto) setRecorrenteParaExcluir(null)
+        }}
+      >
+        <AlertDialogContent className="bg-[#141A22] border-[#232B36] text-white">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir lançamento recorrente?</AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-300">
+              {recorrenteParaExcluir && (
+                <>
+                  “{recorrenteParaExcluir.descricao}” deixará de ser gerado a partir do próximo mês
+                  e sairá da Projeção Anual e do Fluxo de Caixa. Lançamentos já realizados não são
+                  apagados.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="bg-[#0B0F14] border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer">
+              Manter recorrente
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (recorrenteParaExcluir) {
+                  handleExcluirRecorrente(recorrenteParaExcluir)
+                }
+                setRecorrenteParaExcluir(null)
+              }}
+              className="bg-[#FF5C5C] hover:bg-[#FF5C5C]/85 text-[#0B0F14] font-bold cursor-pointer"
+            >
+              Sim, excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
