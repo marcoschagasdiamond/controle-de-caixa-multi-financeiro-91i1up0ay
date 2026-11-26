@@ -3,6 +3,7 @@ import { formatCurrency } from '@/lib/formatters'
 import { PlanoConta } from '@/types/financeiro'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Dialog,
@@ -20,39 +21,45 @@ export interface LinhaSugestao {
   plano: PlanoConta
   orcadoAtual: number
   sugestao: number
+  // true = categoria sem histórico realizado e sem recorrente/parcela no mês:
+  // sugerida como R$ 0,00, para o usuário preencher manualmente na célula.
+  semBase?: boolean
 }
 
 interface Props {
   open: boolean
   onClose: () => void
-  onAplicar: (modo: ModoSugestao) => Promise<void>
+  onAplicar: (modo: ModoSugestao, incluirSemBase: boolean) => Promise<void>
   linhas: LinhaSugestao[]
   mesesHistorico: number
 }
 
 const fmt = (v: number) => (v > 0 ? formatCurrency(v) : '—')
+const fmtZero = (v: number) => (v > 0 ? formatCurrency(v) : formatCurrency(0))
 
 // Diálogo do botão "Preencher com sugestão": mostra a sugestão calculada
-// (média dos meses realizados + recorrentes/parcelas do mês) por categoria
-// e escolhe se aplica somente nas células vazias ou em todas (sobrescreve).
+// (média dos meses realizados + recorrentes/parcelas do mês) por categoria,
+// lista também as categorias SEM base (R$ 0,00) e escolhe se aplica somente
+// nas células vazias ou em todas (sobrescreve).
 export function DialogoSugestaoOrcado({ open, onClose, onAplicar, linhas, mesesHistorico }: Props) {
   const [modo, setModo] = useState<ModoSugestao>('vazias')
+  const [incluirSemBase, setIncluirSemBase] = useState(false)
   const [aplicando, setAplicando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
 
-  const comSugestao = useMemo(() => linhas.filter((l) => l.sugestao > 0), [linhas])
-  const totalSugestao = useMemo(
-    () => comSugestao.reduce((acc, l) => acc + l.sugestao, 0),
-    [comSugestao],
-  )
+  const comSugestao = useMemo(() => linhas.filter((l) => l.sugestao > 0 || !!l.semBase), [linhas])
+  const comValor = useMemo(() => linhas.filter((l) => l.sugestao > 0), [linhas])
+  const semBase = useMemo(() => linhas.filter((l) => !!l.semBase), [linhas])
+  const totalSugestao = useMemo(() => comValor.reduce((acc, l) => acc + l.sugestao, 0), [comValor])
 
   const alvo = modo === 'todas' ? comSugestao : comSugestao.filter((l) => l.orcadoAtual <= 0)
+  const alvoEfetivo = incluirSemBase ? alvo : alvo.filter((l) => !l.semBase)
 
   const handleAplicar = async () => {
     setErro(null)
     setAplicando(true)
     try {
-      await onAplicar(modo)
+      await onAplicar(modo, incluirSemBase)
       onClose()
     } catch (e: any) {
       setErro(e?.message || 'Erro ao salvar os orçamentos sugeridos.')
@@ -78,8 +85,7 @@ export function DialogoSugestaoOrcado({ open, onClose, onAplicar, linhas, mesesH
         <div className="space-y-4">
           {comSugestao.length === 0 ? (
             <p className="text-sm text-gray-400 bg-[#0B0F14] border border-[#232B36] rounded-md p-3">
-              Nenhuma sugestão calculada: as categorias não têm histórico realizado nem
-              recorrentes/parcelas com vencimento neste mês.
+              Nenhuma categoria no plano de contas para sugerir.
             </p>
           ) : (
             <>
@@ -103,19 +109,28 @@ export function DialogoSugestaoOrcado({ open, onClose, onAplicar, linhas, mesesH
                   </thead>
                   <tbody className="divide-y divide-[#232B36]">
                     {comSugestao.map((l) => (
-                      <tr key={l.plano.id}>
+                      <tr key={l.plano.id} className={l.semBase ? 'opacity-60' : undefined}>
                         <th
                           scope="row"
                           className="py-1.5 px-3 text-left font-medium text-white normal-case"
                         >
+                          {l.semBase && (
+                            <span className="inline-block align-middle mr-1.5 px-1.5 py-0.5 rounded-full border border-amber-400/40 text-amber-400 text-[9px] uppercase tracking-wide bg-amber-400/10">
+                              sem base
+                            </span>
+                          )}
                           {l.plano.codigo ? `${l.plano.codigo} — ` : ''}
                           {l.plano.descricao}
                         </th>
                         <td className="py-1.5 px-3 text-right font-mono text-gray-400">
                           {fmt(l.orcadoAtual)}
                         </td>
-                        <td className="py-1.5 px-3 text-right font-mono font-semibold text-[#00D68F]">
-                          {fmt(l.sugestao)}
+                        <td
+                          className={`py-1.5 px-3 text-right font-mono font-semibold ${
+                            l.semBase ? 'text-gray-500' : 'text-[#00D68F]'
+                          }`}
+                        >
+                          {l.semBase ? fmtZero(0) : fmt(l.sugestao)}
                         </td>
                       </tr>
                     ))}
@@ -123,8 +138,10 @@ export function DialogoSugestaoOrcado({ open, onClose, onAplicar, linhas, mesesH
                 </table>
               </div>
               <p className="text-[11px] text-gray-500">
-                {comSugestao.length} categoria(s) com sugestão — total{' '}
-                {formatCurrency(totalSugestao)}
+                {comValor.length > 0
+                  ? `${comValor.length} categoria(s) com sugestão — total ${formatCurrency(totalSugestao)}`
+                  : 'Nenhuma categoria com sugestão calculada'}
+                {semBase.length > 0 && ` · ${semBase.length} sem base (R$ 0,00)`}
               </p>
 
               <fieldset>
@@ -157,6 +174,23 @@ export function DialogoSugestaoOrcado({ open, onClose, onAplicar, linhas, mesesH
                   </div>
                 </RadioGroup>
               </fieldset>
+
+              {semBase.length > 0 && (
+                <div className="flex items-start gap-2">
+                  <Checkbox
+                    id="sug-sem-base"
+                    checked={incluirSemBase}
+                    onCheckedChange={(c) => setIncluirSemBase(c === true)}
+                  />
+                  <Label
+                    htmlFor="sug-sem-base"
+                    className="text-sm text-white font-normal cursor-pointer"
+                  >
+                    Incluir também as {semBase.length} categoria(s) sem base, gravando R$ 0,00 como
+                    orçado
+                  </Label>
+                </div>
+              )}
 
               {modo === 'vazias' && alvo.length === 0 && (
                 <p className="text-xs text-amber-400">
@@ -191,7 +225,10 @@ export function DialogoSugestaoOrcado({ open, onClose, onAplicar, linhas, mesesH
             type="button"
             onClick={handleAplicar}
             disabled={
-              aplicando || comSugestao.length === 0 || (modo === 'vazias' && alvo.length === 0)
+              aplicando ||
+              comSugestao.length === 0 ||
+              alvoEfetivo.length === 0 ||
+              (modo === 'vazias' && alvo.length === 0 && semBase.length === 0)
             }
             className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold cursor-pointer"
           >
@@ -200,11 +237,7 @@ export function DialogoSugestaoOrcado({ open, onClose, onAplicar, linhas, mesesH
             ) : (
               <Wand2 className="w-4 h-4 mr-2" aria-hidden="true" />
             )}
-            {aplicando
-              ? 'Salvando…'
-              : modo === 'todas'
-                ? `Aplicar em todas (${comSugestao.length})`
-                : `Aplicar nas vazias (${alvo.length})`}
+            {aplicando ? 'Salvando…' : `Aplicar em ${alvoEfetivo.length} categoria(s)`}
           </Button>
         </DialogFooter>
       </DialogContent>

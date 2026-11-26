@@ -1,5 +1,5 @@
 // Cálculo da sugestão de valor orçado do Budget (tela Budget vs Realizado).
-// Sugestão por categoria = média dos valores REALIZADOS dos últimos 6 meses
+// Sugestão por categoria = média dos valores REALIZADOS dos últimos 12 meses
 // (a média usa só os meses que têm lançamento realizado) SOMADA às ocorrências
 // de recorrentes/parcelados com vencimento no mês alvo — via recorrenteOcorreEm
 // (src/lib/recorrentes.ts), a mesma regra da Projeção Anual e do Fluxo de Caixa.
@@ -14,7 +14,7 @@
 import { Lancamento, LancamentoRecorrente, PlanoConta } from '@/types/financeiro'
 import { recorrenteOcorreEm } from './recorrentes'
 
-export const MESES_HISTORICO_SUGESTAO = 6
+export const MESES_HISTORICO_SUGESTAO = 12
 
 export interface SugestaoOrcado {
   // plano_conta_id → valor sugerido (0 quando não há base para sugerir)
