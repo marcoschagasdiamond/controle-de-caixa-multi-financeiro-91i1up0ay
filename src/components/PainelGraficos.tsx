@@ -68,6 +68,10 @@ interface Props {
   recorrentes: LancamentoRecorrente[]
   financeiroIdSelecionado: string
   saldoAtual: number
+  /** Mês de referência no formato YYYY-MM escolhido no seletor do Painel */
+  mesAno: string
+  /** Rótulo legível do mês escolhido (ex.: "fevereiro/2025") */
+  mesLabel?: string
 }
 
 export function PainelGraficos({
@@ -78,15 +82,16 @@ export function PainelGraficos({
   recorrentes,
   financeiroIdSelecionado,
   saldoAtual,
+  mesAno,
+  mesLabel,
 }: Props) {
   const [planos, setPlanos] = useState<PlanoConta[]>([])
   const [grupos, setGrupos] = useState<PlanoGrupo[]>([])
   const [budgets, setBudgets] = useState<Budget[]>([])
 
-  const mesAtualStr = useMemo(() => {
-    const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  }, [])
+  // Mês de referência: o escolhido no seletor do Painel (os cards do topo do
+  // Painel já são recalculados lá); aqui controla gráficos por grupo e budgets.
+  const mesAtualStr = mesAno
 
   // Plano de contas é GLOBAL: categorias e grupos vêm sem filtro de financeiro
   useEffect(() => {
@@ -427,7 +432,9 @@ export function PainelGraficos({
       <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
         <CardHeader className="pb-3 border-b border-[#232B36] flex flex-row items-center justify-between">
           <CardTitle className="text-base font-bold">Orçado vs Realizado por Grupo</CardTitle>
-          <span className="text-xs text-gray-400 font-mono">Budgets de {mesAtualStr}</span>
+          <span className="text-xs text-gray-400 font-mono">
+            Budgets de {mesLabel ?? mesAtualStr}
+          </span>
         </CardHeader>
         <CardContent className="p-0">
           {orcadoVsRealizado.length === 0 ? (

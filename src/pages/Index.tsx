@@ -37,6 +37,22 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
+
+const MESES_PT = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+]
+
 import {
   ResponsiveContainer,
   BarChart,
@@ -48,6 +64,7 @@ import {
   Legend,
   AreaChart,
   Area,
+  Cell,
 } from 'recharts'
 
 export default function Index() {
@@ -63,6 +80,18 @@ export default function Index() {
 
   // Filtro de financeiro ou consolidado no Painel
   const [selectedFinId, setSelectedFinId] = useState<string>('todos')
+
+  // Seletor de Mês/Ano do Painel (padrão: mês e ano atuais)
+  const hojeData = useMemo(() => new Date(), [])
+  const anoAtual = hojeData.getFullYear()
+  const mesAtualNum = hojeData.getMonth() + 1
+  const [mesSel, setMesSel] = useState(mesAtualNum)
+  const [anoSel, setAnoSel] = useState(anoAtual)
+  const anosDisponiveis = useMemo(() => {
+    const arr: number[] = []
+    for (let a = anoAtual - 5; a <= anoAtual; a++) arr.push(a)
+    return arr
+  }, [anoAtual])
 
   // Financeiros visíveis ao usuário logado (master = todos; membro = só liberados)
   const { financeiros: finsAcesso, loading: loadingAcesso } = useAcessoFinanceiros()
@@ -150,52 +179,58 @@ export default function Index() {
     })
   }, [contasFiltradas, lancamentosFiltrados])
 
-  // 2. Entradas do Mês Atual
-  const mesAtualStr = useMemo(() => {
-    const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  }, [])
+  // Mês/Ano escolhido no seletor (YYYY-MM) e o imediatamente anterior
+  const mesAnoSelecionado = `${anoSel}-${String(mesSel).padStart(2, '0')}`
+  const mesAnoAtual = `${anoAtual}-${String(mesAtualNum).padStart(2, '0')}`
+  const nomeMesSelecionado = `${MESES_PT[mesSel - 1]}/${anoSel}`
 
+  const mesAnteriorSelecionado = useMemo(() => {
+    const prev = new Date(anoSel, mesSel - 2, 1)
+    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`
+  }, [anoSel, mesSel])
+
+  // 2. Entradas do mês escolhido (realizados)
   const entradasDoMes = useMemo(() => {
     return lancamentosFiltrados
       .filter(
-        (l) => l.tipo === 'credito' && l.status === 'realizado' && l.data.startsWith(mesAtualStr),
+        (l) =>
+          l.tipo === 'credito' && l.status === 'realizado' && l.data.startsWith(mesAnoSelecionado),
       )
       .reduce((acc, l) => acc + Number(l.valor), 0)
-  }, [lancamentosFiltrados, mesAtualStr])
+  }, [lancamentosFiltrados, mesAnoSelecionado])
 
-  // 3. Saídas do Mês Atual
+  // 3. Saídas do mês escolhido (realizados)
   const saidasDoMes = useMemo(() => {
     return lancamentosFiltrados
       .filter(
-        (l) => l.tipo === 'debito' && l.status === 'realizado' && l.data.startsWith(mesAtualStr),
+        (l) =>
+          l.tipo === 'debito' && l.status === 'realizado' && l.data.startsWith(mesAnoSelecionado),
       )
       .reduce((acc, l) => acc + Number(l.valor), 0)
-  }, [lancamentosFiltrados, mesAtualStr])
+  }, [lancamentosFiltrados, mesAnoSelecionado])
 
-  // Mês anterior (YYYY-MM)
-  const mesAnteriorStr = useMemo(() => {
-    const d = new Date()
-    const prev = new Date(d.getFullYear(), d.getMonth() - 1, 1)
-    return `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`
-  }, [])
-
+  // Mês anterior ao escolhido (YYYY-MM), base dos deltas
   const entradasMesAnterior = useMemo(() => {
     return lancamentosFiltrados
       .filter(
         (l) =>
-          l.tipo === 'credito' && l.status === 'realizado' && l.data.startsWith(mesAnteriorStr),
+          l.tipo === 'credito' &&
+          l.status === 'realizado' &&
+          l.data.startsWith(mesAnteriorSelecionado),
       )
       .reduce((acc, l) => acc + Number(l.valor), 0)
-  }, [lancamentosFiltrados, mesAnteriorStr])
+  }, [lancamentosFiltrados, mesAnteriorSelecionado])
 
   const saidasMesAnterior = useMemo(() => {
     return lancamentosFiltrados
       .filter(
-        (l) => l.tipo === 'debito' && l.status === 'realizado' && l.data.startsWith(mesAnteriorStr),
+        (l) =>
+          l.tipo === 'debito' &&
+          l.status === 'realizado' &&
+          l.data.startsWith(mesAnteriorSelecionado),
       )
       .reduce((acc, l) => acc + Number(l.valor), 0)
-  }, [lancamentosFiltrados, mesAnteriorStr])
+  }, [lancamentosFiltrados, mesAnteriorSelecionado])
 
   // Delta percentual vs mês anterior (null quando não há base comparável)
   const deltaPct = (atual: number, anterior: number): number | null => {
@@ -215,13 +250,25 @@ export default function Index() {
     ).length
   }, [extratoFiltrado])
 
-  // GRÁFICO DE BARRAS: Entradas vs Saídas dos últimos 6 meses
+  // GRÁFICO DE BARRAS: Entradas vs Saídas dos últimos 6 meses (contexto).
+  // A janela termina no mês atual; se o mês escolhido é anterior à janela,
+  // ela desliza para terminá-lo, garantindo que o mês escolhido apareça.
   const dadosGrafico6Meses = useMemo(() => {
-    const meses: Array<{ mesAno: string; label: string; entradas: number; saidas: number }> = []
-    const hoje = new Date()
+    const meses: Array<{
+      mesAno: string
+      label: string
+      entradas: number
+      saidas: number
+      selecionado: boolean
+    }> = []
+
+    const inicioPadrao = new Date(anoAtual, mesAtualNum - 6, 1)
+    const inicioPadraoStr = `${inicioPadrao.getFullYear()}-${String(inicioPadrao.getMonth() + 1).padStart(2, '0')}`
+    const fimJanela = mesAnoSelecionado < inicioPadraoStr ? mesAnoSelecionado : mesAnoAtual
+    const [fimAno, fimMes] = fimJanela.split('-').map(Number)
 
     for (let i = 5; i >= 0; i--) {
-      const d = new Date(hoje.getFullYear(), hoje.getMonth() - i, 1)
+      const d = new Date(fimAno, fimMes - 1 - i, 1)
       const ano = d.getFullYear()
       const mes = String(d.getMonth() + 1).padStart(2, '0')
       const mesAno = `${ano}-${mes}`
@@ -243,11 +290,12 @@ export default function Index() {
         label,
         entradas: ent,
         saidas: sai,
+        selecionado: mesAno === mesAnoSelecionado,
       })
     }
 
     return meses
-  }, [lancamentosFiltrados])
+  }, [lancamentosFiltrados, mesAnoSelecionado, mesAnoAtual, anoAtual, mesAtualNum])
 
   // EVOLUÇÃO DO SALDO: saldo acumulado ao fim de cada um dos últimos 6 meses
   // (saldo inicial das contas + todos os lançamentos realizados até o fim do mês)
@@ -268,19 +316,19 @@ export default function Index() {
           else saldoAcumulado -= Number(l.valor)
         }
       }
-      return { label: m.label, saldo: saldoAcumulado }
+      return { label: m.label, saldo: saldoAcumulado, selecionado: m.selecionado }
     })
   }, [dadosGrafico6Meses, contasFiltradas, lancamentosFiltrados])
 
-  // DESTAQUES: os 3 lançamentos do mês que mais impactaram o resultado
+  // DESTAQUES: os 3 lançamentos do mês escolhido que mais impactaram o resultado
   const destaquesDoMes = useMemo(() => {
     const doMes = lancamentosFiltrados
-      .filter((l) => l.status === 'realizado' && l.data.startsWith(mesAtualStr))
+      .filter((l) => l.status === 'realizado' && l.data.startsWith(mesAnoSelecionado))
       .map((l) => ({ ...l, impacto: l.tipo === 'credito' ? Number(l.valor) : -Number(l.valor) }))
       .sort((a, b) => Math.abs(b.impacto) - Math.abs(a.impacto))
       .slice(0, 3)
     return doMes
-  }, [lancamentosFiltrados, mesAtualStr])
+  }, [lancamentosFiltrados, mesAnoSelecionado])
 
   // PRÓXIMOS VENCIMENTOS (Lançamentos previstos + ocorrências de recorrentes)
   const proximosVencimentosCalc = useMemo(() => {
@@ -430,6 +478,69 @@ export default function Index() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Seletor de Mês / Ano (período dos cards de entradas/saídas/resultado e dos gráficos por grupo) */}
+          <div
+            className="flex items-end gap-2"
+            role="group"
+            aria-label="Mês e ano de referência do painel"
+          >
+            <div className="flex flex-col gap-0.5">
+              <label
+                htmlFor="sel-mes-painel"
+                className="text-[9px] font-semibold uppercase text-gray-500"
+              >
+                Mês
+              </label>
+              <select
+                id="sel-mes-painel"
+                value={mesSel}
+                onChange={(e) => setMesSel(Number(e.target.value))}
+                className="h-9 px-2 rounded-md bg-[#141A22] border border-[#232B36] text-white text-xs font-semibold"
+              >
+                {(anoSel === anoAtual ? MESES_PT.slice(0, mesAtualNum) : MESES_PT).map(
+                  (nome, i) => (
+                    <option key={nome} value={i + 1}>
+                      {nome}
+                    </option>
+                  ),
+                )}
+              </select>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <label
+                htmlFor="sel-ano-painel"
+                className="text-[9px] font-semibold uppercase text-gray-500"
+              >
+                Ano
+              </label>
+              <select
+                id="sel-ano-painel"
+                value={anoSel}
+                onChange={(e) => setAnoSel(Number(e.target.value))}
+                className="h-9 px-2 rounded-md bg-[#141A22] border border-[#232B36] text-white text-xs font-semibold"
+              >
+                {anosDisponiveis.map((a) => (
+                  <option key={a} value={a}>
+                    {a}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {mesAnoSelecionado !== mesAnoAtual && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setMesSel(mesAtualNum)
+                  setAnoSel(anoAtual)
+                }}
+                className="text-[10px] text-gray-400 hover:text-white h-7 cursor-pointer"
+              >
+                Voltar ao mês atual
+              </Button>
+            )}
+          </div>
+
           {/* Seletor de Financeiro */}
           <div className="flex items-center gap-2">
             <Building2 className="w-4 h-4 text-[#00D68F]" />
@@ -506,7 +617,9 @@ export default function Index() {
         {/* Card 2: Entradas do Mês */}
         <Card className="bg-[#141A22] border-[#232B36] p-4 text-white shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400 font-semibold uppercase">Entradas do Mês</span>
+            <span className="text-xs text-gray-400 font-semibold uppercase">
+              Entradas · {nomeMesSelecionado}
+            </span>
             <ArrowUpRight className="w-4 h-4 text-[#00D68F]" />
           </div>
           <div className="text-xl font-bold font-mono mt-1 text-[#00D68F]">
@@ -514,7 +627,7 @@ export default function Index() {
           </div>
           <DeltaPct
             delta={deltaEntradas}
-            label="vs. mês passado"
+            label="vs. mês anterior"
             corBoa="text-[#00D68F]"
             corRuim="text-[#FF5C5C]"
           />
@@ -523,7 +636,9 @@ export default function Index() {
         {/* Card 3: Saídas do Mês */}
         <Card className="bg-[#141A22] border-[#232B36] p-4 text-white shadow-lg">
           <div className="flex items-center justify-between">
-            <span className="text-xs text-gray-400 font-semibold uppercase">Saídas do Mês</span>
+            <span className="text-xs text-gray-400 font-semibold uppercase">
+              Saídas · {nomeMesSelecionado}
+            </span>
             <ArrowDownRight className="w-4 h-4 text-[#FF5C5C]" />
           </div>
           <div className="text-xl font-bold font-mono mt-1 text-[#FF5C5C]">
@@ -531,7 +646,7 @@ export default function Index() {
           </div>
           <DeltaPct
             delta={deltaSaidas}
-            label="vs. mês passado"
+            label="vs. mês anterior"
             corBoa="text-[#00D68F]"
             corRuim="text-[#FF5C5C]"
             inverteCor
@@ -552,7 +667,9 @@ export default function Index() {
             {resultadoDoMes >= 0 ? '+' : ''}
             {formatCurrency(resultadoDoMes)}
           </div>
-          <p className="text-[10px] text-gray-500 mt-1">Entradas - Saídas do mês</p>
+          <p className="text-[10px] text-gray-500 mt-1">
+            Entradas - Saídas de {nomeMesSelecionado}
+          </p>
         </Card>
 
         {/* Card 5: Pendentes de Conciliação */}
@@ -653,6 +770,8 @@ export default function Index() {
         recorrentes={recorrentesFiltrados}
         financeiroIdSelecionado={selectedFinId}
         saldoAtual={saldoTotal}
+        mesAno={mesAnoSelecionado}
+        mesLabel={nomeMesSelecionado}
       />
 
       {/* GRÁFICO DE 6 MESES: Entradas vs Saídas */}
@@ -662,7 +781,12 @@ export default function Index() {
             <TrendingUp className="w-5 h-5 text-[#00D68F]" />
             Evolução de Entradas vs Saídas (Últimos 6 Meses)
           </CardTitle>
-          <span className="text-xs text-gray-400 font-mono">Valores Realizados</span>
+          <span className="text-xs text-gray-400 font-mono">
+            Valores Realizados
+            {dadosGrafico6Meses.some((m) => m.selecionado) && (
+              <span className="text-[#00D68F]"> · mês destacado: {nomeMesSelecionado}</span>
+            )}
+          </span>
         </CardHeader>
         <CardContent className="p-0 h-64 w-full pt-4">
           <ResponsiveContainer width="100%" height="100%">
@@ -684,8 +808,28 @@ export default function Index() {
                 formatter={(value: any) => formatCurrency(Number(value))}
               />
               <Legend />
-              <Bar dataKey="entradas" name="Entradas (R$)" fill="#00D68F" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="saidas" name="Saídas (R$)" fill="#FF5C5C" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="entradas" name="Entradas (R$)" radius={[4, 4, 0, 0]}>
+                {dadosGrafico6Meses.map((m) => (
+                  <Cell
+                    key={`e-${m.mesAno}`}
+                    fill="#00D68F"
+                    fillOpacity={m.selecionado ? 1 : 0.45}
+                    stroke={m.selecionado ? '#F1F5F9' : undefined}
+                    strokeWidth={m.selecionado ? 1.5 : 0}
+                  />
+                ))}
+              </Bar>
+              <Bar dataKey="saidas" name="Saídas (R$)" radius={[4, 4, 0, 0]}>
+                {dadosGrafico6Meses.map((m) => (
+                  <Cell
+                    key={`s-${m.mesAno}`}
+                    fill="#FF5C5C"
+                    fillOpacity={m.selecionado ? 1 : 0.45}
+                    stroke={m.selecionado ? '#F1F5F9' : undefined}
+                    strokeWidth={m.selecionado ? 1.5 : 0}
+                  />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
@@ -744,8 +888,15 @@ export default function Index() {
               {/* Mini-tabela dos valores */}
               <div className="grid grid-cols-3 sm:grid-cols-6 divide-x divide-[#232B36] border-t border-[#232B36]">
                 {evolucaoSaldo.map((p) => (
-                  <div key={p.label} className="p-2.5 text-center">
-                    <div className="text-[10px] uppercase text-gray-500 font-semibold">
+                  <div
+                    key={p.label}
+                    className={`p-2.5 text-center rounded-sm ${p.selecionado ? 'bg-[#00D68F]/10' : ''}`}
+                  >
+                    <div
+                      className={`text-[10px] uppercase font-semibold ${
+                        p.selecionado ? 'text-[#00D68F]' : 'text-gray-500'
+                      }`}
+                    >
                       {p.label}
                     </div>
                     <div
@@ -772,7 +923,7 @@ export default function Index() {
         <CardHeader className="pb-3 border-b border-[#232B36] flex flex-row items-center justify-between">
           <CardTitle className="text-base font-bold text-white flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-[#00D68F]" />
-            Maiores Impactos do Mês
+            Maiores Impactos · {nomeMesSelecionado}
           </CardTitle>
           <span className="text-xs text-gray-400 font-mono">
             Top {destaquesDoMes.length || 3} lançamentos
@@ -781,7 +932,7 @@ export default function Index() {
         <CardContent className="p-0">
           {destaquesDoMes.length === 0 ? (
             <div className="p-8 text-center text-xs text-gray-500">
-              Nenhum lançamento realizado neste mês ainda.
+              Nenhum lançamento realizado em {nomeMesSelecionado} ainda.
             </div>
           ) : (
             <div className="divide-y divide-[#232B36]">
