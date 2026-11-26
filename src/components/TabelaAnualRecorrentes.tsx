@@ -3,7 +3,7 @@
 // Usa a MESMA regra de ocorrência do Fluxo de Caixa (recorrenteOcorreEm, em
 // src/lib/recorrentes.ts) e respeita a segregação por financeiro.
 
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Financeiro, Lancamento, LancamentoRecorrente } from '@/types/financeiro'
 import { formatCurrency } from '@/lib/formatters'
 import { recorrenteOcorreEm } from '@/lib/recorrentes'
@@ -14,6 +14,32 @@ import { CalendarClock, Pencil, Trash2 } from 'lucide-react'
 // Uma linha da projeção sabe se é recorrente por ter id "r-<uuid>"
 const ehLinhaRecorrente = (id: string) => id.startsWith('r-')
 const idRecorrenteDaLinha = (id: string) => id.slice(2)
+
+// Seletor de ano do título: mesma lista de anos do Painel (atual −5 a +5,
+// estendida pelos dados). Options com bg/texto explícitos para não herdar o
+// fundo escuro do card em selects nativos (contraste corrigido na v0.0.40).
+interface SeletorAnoProps {
+  ano: number
+  anosDisponiveis: number[]
+  onChange: (ano: number) => void
+}
+
+function SeletorAno({ ano, anosDisponiveis, onChange }: SeletorAnoProps) {
+  return (
+    <select
+      aria-label="Ano da projeção"
+      value={ano}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="ml-1 h-8 px-2 rounded-md bg-[#0B0F14] border border-[#232B36] text-white text-sm font-semibold cursor-pointer"
+    >
+      {anosDisponiveis.map((a) => (
+        <option key={a} value={a} className="bg-[#0B0F14] text-white">
+          {a}
+        </option>
+      ))}
+    </select>
+  )
+}
 
 const MESES = [
   'jan',
@@ -54,6 +80,10 @@ export default function TabelaAnualRecorrentes({
 }: Props) {
   const anoBase = useMemo(() => new Date().getFullYear(), [])
 
+  // Ano exibido pela tabela (estado da tela, default: ano atual). O auto-ajuste
+  // antigo do título foi substituído pelo seletor: o usuário escolhe o ano.
+  const [anoSelecionado, setAnoSelecionado] = useState<number>(anoBase)
+
   // Segregação patrimonial da projeção: filtra pelo financeiro selecionado.
   const recorrentesVisiveis = useMemo(
     () =>
@@ -77,18 +107,44 @@ export default function TabelaAnualRecorrentes({
       (dataISO) => recorrenteOcorreEm(dataISO, r.dia_mes, r.data_inicial, r.total_parcelas),
     )
 
-  // Ano do título: o ano corrente, exceto quando os recorrentes visíveis ainda
-  // não têm ocorrência nele (ex.: só começam em 2027) — nesse caso usa o
-  // primeiro ano futuro com ocorrência, para o título acompanhar o conteúdo.
-  const ano = useMemo(() => {
-    const ativos = recorrentesVisiveis.filter((r) => r.ativo)
-    if (ativos.some((r) => ocorreEmAlgumMesDoAno(r, anoBase))) return anoBase
-    for (let a = anoBase + 1; a <= anoBase + 10; a++) {
-      if (ativos.some((r) => ocorreEmAlgumMesDoAno(r, a))) return a
+  // Lista de anos do seletor: mesma regra do Painel (atual −5 a +5), estendida
+  // pelos anos com lançamentos e pelas parcelas futuras dos recorrentes.
+  // Recebíveis sem data não têm ano e não entram.
+  const anosDisponiveis = useMemo(() => {
+    let min = anoBase - 5
+    let max = anoBase + 5
+    for (const l of lancamentosVisiveis) {
+      const a = Number(l.data.slice(0, 4))
+      if (Number.isFinite(a) && a > 1900) {
+        if (a < min) min = a
+        if (a > max) max = a
+      }
     }
-    return anoBase
+    for (const r of recorrentesVisiveis) {
+      const aIni = Number(r.data_inicial.slice(0, 4))
+      if (!Number.isFinite(aIni) || aIni <= 1900) continue
+      if (aIni < min) min = aIni
+      if (r.total_parcelas) {
+        // Parcelado: última ocorrência é data_inicial + (total_parcelas - 1) meses
+        const fim = aIni + Math.floor((r.total_parcelas - 1) / 12)
+        if (fim > max) max = fim
+      } else if (r.ativo) {
+        // Mensal contínua ativa: segue gerando ocorrências — folga de 5 anos
+        const fim = aIni + 5
+        if (fim > max) max = fim
+      }
+    }
+    const arr: number[] = []
+    for (let a = min; a <= max; a++) arr.push(a)
+    return arr
+  }, [anoBase, lancamentosVisiveis, recorrentesVisiveis])
+
+  const ano = anoSelecionado
+  // Mantém o seletor coerente se a lista de anos mudar (ex.: recorrente excluído)
+  useEffect(() => {
+    if (!anosDisponiveis.includes(anoSelecionado)) setAnoSelecionado(anoBase)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recorrentesVisiveis, anoBase])
+  }, [anosDisponiveis])
 
   // Linhas de recorrentes/parcelados: valor previsto em cada um dos 12 meses.
   const linhasRecorrentes = useMemo(() => {
@@ -169,7 +225,8 @@ export default function TabelaAnualRecorrentes({
         <CardHeader className="pb-4 border-b border-[#232B36]">
           <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
             <CalendarClock className="w-5 h-5 text-[#00D68F]" />
-            Projeção Anual de Recorrentes ({ano})
+            Projeção Anual de Recorrentes
+            <SeletorAno ano={ano} anosDisponiveis={anosDisponiveis} onChange={setAnoSelecionado} />
           </CardTitle>
         </CardHeader>
         <CardContent className="py-10 text-center text-sm text-gray-500">
@@ -200,7 +257,8 @@ export default function TabelaAnualRecorrentes({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
             <CalendarClock className="w-5 h-5 text-[#00D68F]" />
-            Projeção Anual de Recorrentes ({ano})
+            Projeção Anual de Recorrentes
+            <SeletorAno ano={ano} anosDisponiveis={anosDisponiveis} onChange={setAnoSelecionado} />
           </CardTitle>
           <div className="flex items-center gap-2">
             <Badge className="bg-[#FF5C5C]/15 text-[#FF5C5C] border border-[#FF5C5C]/40 text-[10px]">
