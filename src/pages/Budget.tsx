@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { FinanceiroService } from '@/services/financeiro'
-import { Financeiro, PlanoConta, Lancamento, Budget } from '@/types/financeiro'
+import {
+  Financeiro,
+  PlanoConta,
+  Lancamento,
+  LancamentoRecorrente,
+  Budget,
+} from '@/types/financeiro'
 import { formatCurrency } from '@/lib/formatters'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -20,6 +26,13 @@ import {
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
+import { Wand2 } from 'lucide-react'
+import { calcularSugestaoOrcado, MESES_HISTORICO_SUGESTAO } from '@/lib/budgetSugestao'
+import {
+  DialogoSugestaoOrcado,
+  LinhaSugestao,
+  ModoSugestao,
+} from '@/components/DialogoSugestaoOrcado'
 
 // Interface para as linhas da tabela de Budget
 interface LinhaBudgetItem {
@@ -52,6 +65,13 @@ export default function BudgetPage() {
   const [editValue, setEditValue] = useState<string>('')
   const [savingCell, setSavingCell] = useState(false)
 
+  // Estado do diálogo "Preencher com sugestão"
+  const [dialogoSugestao, setDialogoSugestao] = useState(false)
+  const [aplicandoSugestao, setAplicandoSugestao] = useState(false)
+
+  // Recorrentes e parcelados do financeiro selecionado (base da sugestão)
+  const [recorrentes, setRecorrentes] = useState<LancamentoRecorrente[]>([])
+
   // Financeiros visíveis ao usuário logado (master = todos; membro = só liberados)
   const { financeiros: finsAcesso } = useAcessoFinanceiros()
 
@@ -65,13 +85,15 @@ export default function BudgetPage() {
   const carregarDadosIniciais = async () => {
     try {
       setLoading(true)
-      const [pls, lcs] = await Promise.all([
+      const [pls, lcs, rcs] = await Promise.all([
         FinanceiroService.getPlanoContas(),
         FinanceiroService.getLancamentos(),
+        FinanceiroService.getLancamentosRecorrentes(),
       ])
 
       setPlanos(pls)
       setLancamentos(lcs)
+      setRecorrentes(rcs)
     } catch (err: any) {
       toast({ variant: 'destructive', title: 'Erro ao carregar dados', description: err.message })
     } finally {
@@ -136,6 +158,30 @@ export default function BudgetPage() {
     })
   }, [planosDoFin, budgets, lancamentos, selectedFinId, selectedMes])
 
+  // Sugestão de orçado: média dos últimos 6 meses realizados + recorrentes/
+  // parcelas com vencimento no mês selecionado (src/lib/budgetSugestao.ts,
+  // que reutiliza recorrenteOcorreEm de src/lib/recorrentes.ts).
+  const sugestao = useMemo(
+    () =>
+      selectedFinId && selectedMes
+        ? calcularSugestaoOrcado(planosDoFin, lancamentos, recorrentes, selectedFinId, selectedMes)
+        : { porPlano: new Map<string, number>(), mesesConsiderados: 0 },
+    [planosDoFin, lancamentos, recorrentes, selectedFinId, selectedMes],
+  )
+
+  // Linhas do diálogo: só categorias com sugestão > 0 (não inventa valor)
+  const linhasSugestao = useMemo<LinhaSugestao[]>(
+    () =>
+      linhasBudget
+        .map((linha) => ({
+          plano: linha.plano,
+          orcadoAtual: linha.orcado,
+          sugestao: sugestao.porPlano.get(linha.plano.id) || 0,
+        }))
+        .filter((l) => l.sugestao > 0),
+    [linhasBudget, sugestao],
+  )
+
   // Totais Gerais
   const totalOrcado = linhasBudget.reduce((acc, cur) => acc + cur.orcado, 0)
   const totalRealizado = linhasBudget.reduce((acc, cur) => acc + cur.realizado, 0)
@@ -175,6 +221,31 @@ export default function BudgetPage() {
     } finally {
       setSavingCell(false)
     }
+  }
+
+  // Aplicar a sugestão: salva os orçados pelo MESMO caminho da edição manual
+  // (FinanceiroService.upsertBudget → RLS), respeitando financeiro e mês da tela.
+  // "vazias" = só categorias sem valor orçado; "todas" = sobrescreve tudo.
+  const handleAplicarSugestao = async (modo: ModoSugestao) => {
+    if (!selectedFinId || !selectedMes) return
+    const alvo =
+      modo === 'todas' ? linhasSugestao : linhasSugestao.filter((l) => l.orcadoAtual <= 0)
+    if (alvo.length === 0) return
+
+    for (const l of alvo) {
+      await FinanceiroService.upsertBudget({
+        financeiro_id: selectedFinId,
+        plano_conta_id: l.plano.id,
+        mes_ano: selectedMes,
+        valor_orcado: l.sugestao,
+      })
+    }
+
+    await carregarBudgets()
+    toast({
+      title: 'Sugestão aplicada!',
+      description: `${alvo.length} categoria(s) orçada(s) com a média dos últimos ${MESES_HISTORICO_SUGESTAO} meses + recorrentes do mês. Os valores continuam editáveis na célula.`,
+    })
   }
 
   // Cores da barra de progresso conforme especificação:
@@ -234,9 +305,21 @@ export default function BudgetPage() {
             variant="outline"
             size="icon"
             onClick={carregarBudgets}
+            aria-label="Recarregar budgets"
             className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] h-9 w-9"
           >
             <RefreshCw className="w-4 h-4" />
+          </Button>
+
+          {/* Preenchimento automático do orçado (média realizada + recorrentes) */}
+          <Button
+            size="sm"
+            onClick={() => setDialogoSugestao(true)}
+            disabled={loading || aplicandoSugestao || linhasSugestao.length === 0}
+            className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold h-9"
+          >
+            <Wand2 className="w-4 h-4 mr-2" aria-hidden="true" />
+            {aplicandoSugestao ? 'Aplicando…' : 'Preencher com sugestão'}
           </Button>
         </div>
       </div>
@@ -426,6 +509,15 @@ export default function BudgetPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Preencher com sugestão: aplica a média realizada + recorrentes nos orçados */}
+      <DialogoSugestaoOrcado
+        open={dialogoSugestao}
+        onClose={() => setDialogoSugestao(false)}
+        onAplicar={handleAplicarSugestao}
+        linhas={linhasSugestao}
+        mesesHistorico={MESES_HISTORICO_SUGESTAO}
+      />
     </div>
   )
 }
