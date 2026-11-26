@@ -1,13 +1,16 @@
 // Cálculo da sugestão de valor orçado do Budget (tela Budget vs Realizado).
-// Sugestão por categoria = média dos valores REALIZADOS dos últimos 12 meses
-// (a média usa só os meses que têm lançamento realizado) SOMADA às ocorrências
-// de recorrentes/parcelados com vencimento no mês alvo — via recorrenteOcorreEm
-// (src/lib/recorrentes.ts), a mesma regra da Projeção Anual e do Fluxo de Caixa.
+// Sugestão por categoria = média dos valores REALIZADOS da janela de 12 meses
+// terminando no mês ALVO INCLUSIVE (ex.: alvo 2026-11 → dez/2025 a nov/2026, para
+// o realizado do próprio mês entrar na sugestão; a média usa só os meses que têm
+// lançamento realizado) SOMADA às ocorrências de recorrentes/parcelados com
+// vencimento no mês alvo — via recorrenteOcorreEm (src/lib/recorrentes.ts), a
+// mesma regra da Projeção Anual e do Fluxo de Caixa.
 //
 // Sem dupla contagem: uma ocorrência de recorrente que já tem lançamento
-// equivalente no mês (mesma descrição e data, realizado OU previsto — mesmo
-// critério de dedupe de src/lib/projecao.ts) não entra na soma, porque o valor
-// dela já está dentro da média realizada.
+// equivalente REALIZADO no mês (mesma descrição e data) não entra na soma,
+// porque o valor dela já está dentro da média realizada. Lançamento apenas
+// PREVISTO não conta como equivalente: previsto não entra na média, então o
+// recorrente entra na sugestão uma única vez (em vez de simplesmente sumir).
 //
 // Categorias sem histórico e sem recorrente ficam com sugestão 0 (não inventa valor).
 
@@ -32,12 +35,12 @@ function vencimentoNoMes(mesAno: string, diaMes: number): string {
   return `${mesAno}-${String(dia).padStart(2, '0')}`
 }
 
-// Lista os N meses anteriores ao mês alvo (YYYY-MM), mais recentes primeiro,
-// sem contar o próprio mês alvo. Ex.: alvo 2026-03, N=2 → ['2026-02', '2026-01']
+// Lista os N meses da janela terminando no mês alvo INCLUSIVE (YYYY-MM), mais
+// recentes primeiro. Ex.: alvo 2026-03, N=2 → ['2026-03', '2026-02']
 export function mesesAnteriores(mesAlvo: string, n: number): string[] {
   const [ano, mes] = mesAlvo.split('-').map(Number)
   const lista: string[] = []
-  for (let i = 1; i <= n; i++) {
+  for (let i = 0; i < n; i++) {
     const d = new Date(ano, mes - 1 - i, 1)
     lista.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`)
   }
@@ -81,7 +84,8 @@ export function calcularSugestaoOrcado(
   }
 
   // 2. Recorrentes/parcelas com vencimento no mês alvo (ativo + financeiro),
-  //    excluindo ocorrências já representadas por lançamento equivalente no mês.
+  //    excluindo ocorrências já representadas por lançamento equivalente
+  //    REALIZADO no mês (o previsto não entra na média, então não dedupa).
   const dataVenc = (r: LancamentoRecorrente) => vencimentoNoMes(mesAlvo, r.dia_mes)
   const temLancamentoEquivalente = (r: LancamentoRecorrente, data: string) =>
     lancamentos.some(
@@ -89,7 +93,7 @@ export function calcularSugestaoOrcado(
         l.financeiro_id === r.financeiro_id &&
         l.descricao === r.descricao &&
         l.data === data &&
-        (l.status === 'realizado' || l.status === 'previsto'),
+        l.status === 'realizado',
     )
 
   const recorrentePorPlano = new Map<string, number>()

@@ -77,8 +77,9 @@ export function DialogoSugestaoOrcado({ open, onClose, onAplicar, linhas, mesesH
             Preencher com sugestão
           </DialogTitle>
           <DialogDescription className="text-gray-400 text-xs">
-            Média dos últimos {mesesHistorico} meses realizados + recorrentes/parcelas com
-            vencimento no mês. Revise e ajuste na célula onde precisar.
+            Média dos lançamentos realizados na janela de {mesesHistorico} meses terminando no mês
+            selecionado + recorrentes/parcelas com vencimento no mês. Revise e ajuste na célula onde
+            precisar.
           </DialogDescription>
         </DialogHeader>
 
