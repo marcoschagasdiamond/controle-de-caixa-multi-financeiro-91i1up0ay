@@ -87,11 +87,39 @@ export default function Index() {
   const mesAtualNum = hojeData.getMonth() + 1
   const [mesSel, setMesSel] = useState(mesAtualNum)
   const [anoSel, setAnoSel] = useState(anoAtual)
+  // Anos do seletor: base de 5 anos atrás a 5 anos à frente do ano atual,
+  // estendida conforme os dados — anos com lançamentos (inclusive previstos
+  // futuros, contratos/parcelamentos) e recorrentes com parcelas à frente.
+  // A usuária lança recebíveis e despesas com datas futuras, então a lista
+  // cresce para cobri-las; mesmo sem dados há anos à frente para escolher.
   const anosDisponiveis = useMemo(() => {
+    let min = anoAtual - 5
+    let max = anoAtual + 5
+    for (const l of lancamentos) {
+      const a = Number(l.data.slice(0, 4))
+      if (Number.isFinite(a) && a > 1900) {
+        if (a < min) min = a
+        if (a > max) max = a
+      }
+    }
+    for (const r of recorrentes) {
+      const aIni = Number(r.data_inicial.slice(0, 4))
+      if (!Number.isFinite(aIni) || aIni <= 1900) continue
+      if (aIni < min) min = aIni
+      if (r.total_parcelas) {
+        // Parcelado: última ocorrência é data_inicial + (total_parcelas - 1) meses
+        const fim = aIni + Math.floor((r.total_parcelas - 1) / 12)
+        if (fim > max) max = fim
+      } else if (r.ativo) {
+        // Mensal contínua ativa: segue gerando ocorrências — folga de 5 anos
+        const fim = aIni + 5
+        if (fim > max) max = fim
+      }
+    }
     const arr: number[] = []
-    for (let a = anoAtual - 5; a <= anoAtual; a++) arr.push(a)
+    for (let a = min; a <= max; a++) arr.push(a)
     return arr
-  }, [anoAtual])
+  }, [anoAtual, lancamentos, recorrentes])
 
   // Financeiros visíveis ao usuário logado (master = todos; membro = só liberados)
   const { financeiros: finsAcesso, loading: loadingAcesso } = useAcessoFinanceiros()
