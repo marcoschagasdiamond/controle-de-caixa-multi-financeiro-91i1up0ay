@@ -20,7 +20,13 @@ import {
 import { formatCurrency } from '@/lib/formatters'
 import { baixarCSV, valorCSV } from '@/lib/csv'
 import { calcularProjecaoPorPlano } from '@/lib/dreProjetado'
-import { calcularComp, sinalComp, percentualComp, classeComp } from '@/lib/dreOrcado'
+import {
+  calcularComp,
+  sinalComp,
+  percentualComp,
+  classeComp,
+  orcadoPorPlano,
+} from '@/lib/dreOrcado'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -92,6 +98,7 @@ export interface BlocoDRE {
 }
 
 const zero12 = () => Array.from({ length: 12 }, () => 0)
+const falso12 = () => Array.from({ length: 12 }, () => false)
 
 // Monta um bloco (receitas ou despesas): soma os lançamentos realizados por
 // categoria/mês e agrupa pelas categorias pertencentes a cada grupo do plano.
@@ -145,7 +152,7 @@ function montarBloco(
     if (!arr) {
       arr = zero12()
       mapa.set(planoId, arr)
-      marcasProj.set(planoId, zero12())
+      marcasProj.set(planoId, falso12())
     }
     const marcas = marcasProj.get(planoId)
     projArr.forEach((v, m) => {
@@ -170,7 +177,7 @@ function montarBloco(
   for (const g of gruposDoTipo) porGrupo.set(g.id, [])
 
   for (const [planoId, valores] of mapa) {
-    if (!valores.some((v) => v !== 0) && !(orcados.get(planoId)?.some((v) => v !== 0))) continue
+    if (!valores.some((v) => v !== 0) && !orcados.get(planoId)?.some((v) => v !== 0)) continue
     const plano = planos.find((p) => p.id === planoId)
     const linha: LinhaCategoria = {
       plano: plano ?? {
@@ -183,7 +190,7 @@ function montarBloco(
       },
       valores,
       orcado: orcados?.get(planoId) || zero12(),
-      projetado: marcasProj.get(planoId) || zero12(),
+      projetado: marcasProj.get(planoId) || falso12(),
     }
     const gid = plano?.grupo_id ?? null
     const lista = porGrupo.get(gid)
@@ -199,14 +206,8 @@ function montarBloco(
     const linhas = porGrupo.get(g.id) || []
     if (linhas.length === 0) continue
     linhas.sort((a, b) => (a.plano.codigo || '').localeCompare(b.plano.codigo || ''))
-    const subtotal = linhas.reduce(
-      (acc, l) => acc.map((v, i) => v + l.valores[i]),
-      zero12(),
-    )
-    const subtotalOrcado = linhas.reduce(
-      (acc, l) => acc.map((v, i) => v + l.orcado[i]),
-      zero12(),
-    )
+    const subtotal = linhas.reduce((acc, l) => acc.map((v, i) => v + l.valores[i]), zero12())
+    const subtotalOrcado = linhas.reduce((acc, l) => acc.map((v, i) => v + l.orcado[i]), zero12())
     const temProjecaoMes = Array.from({ length: 12 }, (_, i) => linhas.some((l) => l.projetado[i]))
     for (let i = 0; i < 12; i++) {
       total[i] += subtotal[i]
@@ -218,14 +219,8 @@ function montarBloco(
   const semGrupo = porGrupo.get(null) || []
   if (semGrupo.length > 0) {
     semGrupo.sort((a, b) => (a.plano.codigo || '').localeCompare(b.plano.codigo || ''))
-    const subtotal = semGrupo.reduce(
-      (acc, l) => acc.map((v, i) => v + l.valores[i]),
-      zero12(),
-    )
-    const subtotalOrcado = semGrupo.reduce(
-      (acc, l) => acc.map((v, i) => v + l.orcado[i]),
-      zero12(),
-    )
+    const subtotal = semGrupo.reduce((acc, l) => acc.map((v, i) => v + l.valores[i]), zero12())
+    const subtotalOrcado = semGrupo.reduce((acc, l) => acc.map((v, i) => v + l.orcado[i]), zero12())
     const temProjecaoMes = Array.from({ length: 12 }, (_, i) =>
       semGrupo.some((l) => l.projetado[i]),
     )
@@ -250,7 +245,7 @@ const blocoVazio = (): BlocoDRE => ({
   total: zero12(),
   totalOrcado: zero12(),
   temProjecao: false,
-  temProjecaoMes: zero12(),
+  temProjecaoMes: falso12(),
 })
 
 export default function DREPage() {
@@ -291,7 +286,12 @@ export default function DREPage() {
         FinanceiroService.getPlanoGrupos(),
         FinanceiroService.getLancamentos(),
         FinanceiroService.getLancamentosRecorrentes(),
-        FinanceiroService.getBudgetsAno(selectedFinId, anoSel),
+        // Orçado: ano inteiro no modo Ano completo; só o mês selecionado no modo
+        // mês (que pode estar em um ano diferente do anoSel — não usar o mapa do
+        // ano para preencher o mês, os budgets são por "YYYY-MM" exato)
+        modoAno
+          ? FinanceiroService.getBudgetsAno(selectedFinId, anoSel)
+          : FinanceiroService.getBudgets(selectedFinId, selectedMes),
       ])
       setPlanos(pls)
       setGrupos(gps)
@@ -308,7 +308,7 @@ export default function DREPage() {
   useEffect(() => {
     carregarDados()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedFinId, anoSel])
+  }, [selectedFinId, anoSel, selectedMes, modoAno])
 
   // Anos do seletor: base atual ±5, estendida pelos anos presentes nos lançamentos
   const anosDisponiveis = useMemo(() => {
@@ -343,11 +343,11 @@ export default function DREPage() {
   const prefixoPeriodo = modoAno ? `${anoSel}-` : selectedMes
 
   // Orçado por categoria e mês (Map plano_conta_id → 12 posições) a partir dos
-  // budgets do financeiro — no modo mês, os 12 meses são carregados e o mês
-  // escolhido é o que entra na comparação; no modo ano, todas as posições.
+  // budgets do financeiro, filtrados pelo período exibido: no modo mês só a
+  // posição do mês escolhido é preenchida; no modo ano, as 12 posições.
   const orcadosPorPlano = useMemo(
-    () => orcadoMapa(budgets, selectedFinId),
-    [budgets, selectedFinId],
+    () => orcadoPorPlano(budgets, selectedFinId, prefixoPeriodo),
+    [budgets, selectedFinId, prefixoPeriodo],
   )
 
   // Projeção anual por categoria (só no modo Ano completo com o toggle ativo):
@@ -425,8 +425,7 @@ export default function DREPage() {
   const orcadoResultado = compReceitas.orcado - compDespesas.orcado
   const variacaoResultado = compReceitas.variacaoR$ - compDespesas.variacaoR$
   const percentualResultado = orcadoResultado > 0 ? (resultado / orcadoResultado) * 100 : 0
-  const temBudgetPeriodo =
-    compReceitas.orcado > 0 || compDespesas.orcado > 0
+  const temBudgetPeriodo = compReceitas.orcado > 0 || compDespesas.orcado > 0
 
   const finSel = financeiros.find((f) => f.id === selectedFinId)
   const rotuloPeriodo = modoAno
@@ -458,31 +457,52 @@ export default function DREPage() {
     const modo = modoAno ? `ano-${anoSel}${incluirProjecao ? '-com-projecao' : ''}` : selectedMes
     const cabecalho = ['Bloco', 'Grupo', 'Categoria']
     if (modoAno) {
-      cabecalho.push(...MESES_CURTOS.map((m) => m.toUpperCase()), 'Total Ano (R$)')
+      if (temBudgetPeriodo) {
+        // Intercala realizado e orçado de cada mês (mesma leitura da tabela)
+        MESES_CURTOS.forEach((m) => cabecalho.push(`${m.toUpperCase()} (R$)`, `Orç. ${m} (R$)`))
+      } else {
+        cabecalho.push(...MESES_CURTOS.map((m) => `${m.toUpperCase()} (R$)`))
+      }
+      cabecalho.push('Total Ano (R$)')
     } else {
       cabecalho.push('Valor (R$)')
     }
     if (temBudgetPeriodo) {
-      cabecalho.push('Orçado (R$)', 'Var. R$ (orçado − realizado)', 'Var. %')
+      cabecalho.push(
+        modoAno ? 'Orçado Ano (R$)' : 'Orçado (R$)',
+        'Var. R$ (orçado − realizado)',
+        'Var. %',
+      )
     }
 
     const linhas: unknown[][] = []
     // Realizado do período (mês ou soma do ano) + orçado e variação da linha
-    const linhaDe = (bloco: string, grupo: string, cat: string, valores: number[], orcado: number[]) => {
+    const linhaDe = (
+      bloco: string,
+      grupo: string,
+      cat: string,
+      valores: number[],
+      orcado: number[],
+    ) => {
       const comp = calcularComp(orcado, valores, modoAno, mesIdx)
       const tipo: 'receita' | 'despesa' = bloco === 'RECEITAS' ? 'receita' : 'despesa'
       const reg: unknown[] = [bloco, grupo, cat]
       if (modoAno) {
-        reg.push(...valores.map(valorCSV), valorCSV(somaPeriodo(valores)))
+        if (temBudgetPeriodo) {
+          for (let m = 0; m < 12; m++) {
+            reg.push(valorCSV(valores[m]), valorCSV(orcado[m]))
+          }
+        } else {
+          reg.push(...valores.map(valorCSV))
+        }
+        reg.push(valorCSV(somaPeriodo(valores)))
       } else {
         reg.push(valorCSV(valores[mesIdx]))
       }
       if (temBudgetPeriodo) {
         reg.push(
           valorCSV(comp.orcado),
-          comp.orcado === 0
-            ? ''
-            : `${sinalComp(comp, tipo)}${valorCSV(Math.abs(comp.variacaoR$))}`,
+          comp.orcado === 0 ? '' : `${sinalComp(comp, tipo)}${valorCSV(Math.abs(comp.variacaoR$))}`,
           comp.orcado === 0 ? '' : `${sinalComp(comp, tipo)}${percentualComp(comp)}`,
         )
       }
@@ -497,7 +517,13 @@ export default function DREPage() {
       for (const g of bloco.grupos) {
         const nomeGrupo = g.grupo?.nome || 'Sem grupo'
         for (const l of g.linhas) {
-          linhaDe(nomeBloco, nomeGrupo, `${l.plano.codigo} ${l.plano.descricao}`.trim(), l.valores, l.orcado)
+          linhaDe(
+            nomeBloco,
+            nomeGrupo,
+            `${l.plano.codigo} ${l.plano.descricao}`.trim(),
+            l.valores,
+            l.orcado,
+          )
         }
         linhaDe(nomeBloco, nomeGrupo, `Subtotal ${nomeGrupo}`, g.subtotal, g.subtotalOrcado)
       }
@@ -793,8 +819,11 @@ export default function DREPage() {
           </span>
           <span className="text-[#00D68F]">verde</span> = dentro do planejado (despesa ≤90% do
           orçado, receita ≥100%), <span className="text-amber-400">amarelo</span> = atenção
-          (90–100%), <span className="text-[#FF5C5C]">vermelho</span> = fora do planejado. Categorias
-          orçadas sem movimento aparecem com realizado zero.
+          (90–100%), <span className="text-[#FF5C5C]">vermelho</span> = fora do planejado.
+          Categorias orçadas sem movimento aparecem com realizado zero.
+          {modoAno
+            ? ' No modo Ano completo, cada célula mensal mostra abaixo do realizado o orçado daquele mês (prefixo "orc.").'
+            : ''}
         </div>
       ) : null}
 
@@ -837,14 +866,14 @@ export default function DREPage() {
                 <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
                   Orçado
                 </p>
-                <p className="text-sm font-mono text-gray-300">
-                  {formatCurrency(orcadoResultado)}
-                </p>
+                <p className="text-sm font-mono text-gray-300">{formatCurrency(orcadoResultado)}</p>
               </div>
             ) : null}
             <span
               className={`text-lg font-bold font-mono ${
-                resultado >= 0 ? 'text-[#00D68F] dre-keep dre-pos' : 'text-[#FF5C5C] dre-keep dre-neg'
+                resultado >= 0
+                  ? 'text-[#00D68F] dre-keep dre-pos'
+                  : 'text-[#FF5C5C] dre-keep dre-neg'
               }`}
             >
               {formatCurrency(resultado)}
@@ -870,7 +899,13 @@ export default function DREPage() {
 }
 
 // Linha de variação sob o valor dos cards de resumo (orçado + variação colorida)
-function LinhaCompCard({ comp, tipo }: { comp: ReturnType<typeof calcularComp>; tipo: 'receita' | 'despesa' }) {
+function LinhaCompCard({
+  comp,
+  tipo,
+}: {
+  comp: ReturnType<typeof calcularComp>
+  tipo: 'receita' | 'despesa'
+}) {
   const cor = classeComp(comp, tipo)
   const sinal = sinalComp(comp, tipo)
   return (
@@ -889,22 +924,4 @@ function LinhaCompCard({ comp, tipo }: { comp: ReturnType<typeof calcularComp>; 
       ) : null}
     </div>
   )
-}
-
-// Orçado por categoria e mês: Map plano_conta_id → 12 posições. O financeiro e
-// o período (mês/ano) são filtrados depois em montarBloco via prefixo.
-function orcadoMapa(budgets: Budget[], finId: string): Map<string, number[]> {
-  const mapa = new Map<string, number[]>()
-  for (const b of budgets) {
-    if (b.financeiro_id !== finId) continue
-    const m = Number(b.mes_ano.slice(5, 7)) - 1
-    if (!(m >= 0 && m <= 11)) continue
-    let arr = mapa.get(b.plano_conta_id)
-    if (!arr) {
-      arr = zero12()
-      mapa.set(b.plano_conta_id, arr)
-    }
-    arr[m] += Number(b.valor_orcado) || 0
-  }
-  return mapa
 }

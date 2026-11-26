@@ -1,12 +1,12 @@
 // Tabelas do relatório DRE (um bloco = Receitas ou Despesas) com a comparação
 // orçado vs realizado por categoria, subtotal de grupo e total do bloco.
 // Colunas fixas à direita: Realizado | Orçado | Var. R$ | Var. %.
-// No modo Ano completo as 12 colunas mensais continuam só com o realizado
-// (a comparação orçamentária é pelo total do ano). Impressão preservada com
-// as classes dre-keep/dre-pos/dre-neg do main.css.
+// No modo Ano completo cada célula mensal mostra o realizado e, abaixo dele,
+// o orçado do mês (prefixo "orc") — o Total Ano compara o ano inteiro, e as
+// colunas fixas Orçado/Var. usam a soma dos 12 orçados da categoria.
+// Impressão preservada com as classes dre-keep/dre-pos/dre-neg do main.css.
 
 import { formatCurrency } from '@/lib/formatters'
-import { valorCSV } from '@/lib/csv'
 import { CompDRE, calcularComp, classeComp, sinalComp, percentualComp } from '@/lib/dreOrcado'
 import type { BlocoDRE } from '@/pages/DRE'
 
@@ -27,35 +27,44 @@ const MESES_CURTOS = [
 
 const somaPeriodo = (valores: number[]) => valores.reduce((a, b) => a + b, 0)
 
-// Célula de valor: itálico apagado + asterisco quando tem componente projetado
+// Célula de valor: itálico apagado + asterisco quando tem componente projetado.
+// comOrcado: mostra abaixo do realizado o orçado daquele mês (modo Ano completo
+// com budget) — prefixo "orc" para diferenciar na leitura.
 const CelulaValor = ({
   v,
   temProj,
   exibirProjecao,
+  orcadoMes,
+  comOrcado = false,
 }: {
   v: number
   temProj?: boolean
   exibirProjecao: boolean
+  orcadoMes?: number
+  comOrcado?: boolean
 }) => {
-  if (v === 0) return <span className="text-gray-700">—</span>
-  const valor = formatCurrency(v).replace('R$', '').trim()
+  if (v === 0 && !(comOrcado && (orcadoMes ?? 0) !== 0))
+    return <span className="text-gray-700">—</span>
   const proj = Boolean(exibirProjecao && temProj)
   return (
-    <span className={proj ? 'italic text-gray-400' : 'text-gray-200'}>
-      {valor}
-      {proj ? ' *' : ''}
+    <span className="inline-flex flex-col items-center leading-tight">
+      <span className={proj ? 'italic text-gray-400' : 'text-gray-200'}>
+        {v === 0 ? '—' : `${formatCurrency(v).replace('R$', '').trim()}${proj ? ' *' : ''}`}
+      </span>
+      {comOrcado && (orcadoMes ?? 0) !== 0 ? (
+        <span className="text-[9px] text-gray-500 italic">
+          orc{' '}
+          {formatCurrency(orcadoMes ?? 0)
+            .replace('R$', '')
+            .trim()}
+        </span>
+      ) : null}
     </span>
   )
 }
 
 // Células de orçado + variação de uma linha, já com a cor coerente por tipo
-export const CelulasComp = ({
-  comp,
-  tipo,
-}: {
-  comp: CompDRE
-  tipo: 'receita' | 'despesa'
-}) => {
+export const CelulasComp = ({ comp, tipo }: { comp: CompDRE; tipo: 'receita' | 'despesa' }) => {
   const cor = classeComp(comp, tipo)
   const sinal = sinalComp(comp, tipo)
   return (
@@ -63,12 +72,16 @@ export const CelulasComp = ({
       <td className="py-2.5 px-3 text-right font-mono text-xs text-gray-300 whitespace-nowrap">
         {comp.orcado === 0 ? <span className="text-gray-600">—</span> : formatCurrency(comp.orcado)}
       </td>
-      <td className={`py-2.5 px-3 text-right font-mono text-xs font-semibold whitespace-nowrap ${cor}`}>
+      <td
+        className={`py-2.5 px-3 text-right font-mono text-xs font-semibold whitespace-nowrap ${cor}`}
+      >
         {comp.orcado === 0
           ? '—'
           : `${sinal}R$ ${formatCurrency(Math.abs(comp.variacaoR$)).replace('R$', '').trim()}`}
       </td>
-      <td className={`py-2.5 px-4 text-right font-mono text-xs font-semibold whitespace-nowrap ${cor}`}>
+      <td
+        className={`py-2.5 px-4 text-right font-mono text-xs font-semibold whitespace-nowrap ${cor}`}
+      >
         {percentualComp(comp) === '—' ? '—' : `${sinal}${percentualComp(comp).replace('-', '')}`}
       </td>
     </>
@@ -166,16 +179,23 @@ export default function BlocoTabelaDRE({
                   <td
                     key={m}
                     className={`py-2.5 px-2 text-center font-mono text-[11px] ${
-                      exibirProjecao && bloco.temProjecao[m]
-                        ? 'italic text-gray-400'
-                        : 'text-white'
+                      exibirProjecao && bloco.temProjecao[m] ? 'italic text-gray-400' : 'text-white'
                     }`}
                   >
-                    {v === 0
-                      ? '—'
-                      : `${formatCurrency(v).replace('R$', '').trim()}${
-                          exibirProjecao && bloco.temProjecao[m] ? ' *' : ''
-                        }`}
+                    <span className="inline-flex flex-col items-center leading-tight">
+                      <span>
+                        {v === 0
+                          ? '—'
+                          : `${formatCurrency(v).replace('R$', '').trim()}${
+                              exibirProjecao && bloco.temProjecao[m] ? ' *' : ''
+                            }`}
+                      </span>
+                      {temBudget && bloco.totalOrcado[m] !== 0 ? (
+                        <span className="text-[9px] text-gray-500 italic">
+                          orc {formatCurrency(bloco.totalOrcado[m]).replace('R$', '').trim()}
+                        </span>
+                      ) : null}
+                    </span>
                   </td>
                 ))}
               <td
@@ -239,7 +259,13 @@ function CategoriaGrupoLinhas({
                   key={m}
                   className="py-2.5 px-2 text-center font-mono text-[11px] whitespace-nowrap"
                 >
-                  <CelulaValor v={v} temProj={l.projetado[m]} exibirProjecao={exibirProjecao} />
+                  <CelulaValor
+                    v={v}
+                    temProj={l.projetado[m]}
+                    exibirProjecao={exibirProjecao}
+                    orcadoMes={l.orcado[m]}
+                    comOrcado={temBudget}
+                  />
                 </td>
               ))}
             <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold text-white whitespace-nowrap">
@@ -255,11 +281,14 @@ function CategoriaGrupoLinhas({
         </td>
         {modoAno &&
           g.subtotal.map((v, m) => (
-            <td
-              key={m}
-              className="py-2 px-2 text-center font-mono text-[11px]"
-            >
-              <CelulaValor v={v} temProj={g.temProjecaoMes[m]} exibirProjecao={exibirProjecao} />
+            <td key={m} className="py-2 px-2 text-center font-mono text-[11px]">
+              <CelulaValor
+                v={v}
+                temProj={g.temProjecaoMes[m]}
+                exibirProjecao={exibirProjecao}
+                orcadoMes={g.subtotalOrcado[m]}
+                comOrcado={temBudget}
+              />
             </td>
           ))}
         <td className="py-2 px-4 text-right font-mono text-xs font-bold text-white whitespace-nowrap">

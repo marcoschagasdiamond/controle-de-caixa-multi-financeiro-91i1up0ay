@@ -82,5 +82,4 @@ export function sinalComp(c: CompDRE, tipo: 'receita' | 'despesa'): string {
   return c.percentual >= 100 ? '+' : '−'
 }
 
-export const percentualComp = (c: CompDRE) =>
-  c.orcado > 0 ? `${c.percentual.toFixed(1)}%` : '—'
+export const percentualComp = (c: CompDRE) => (c.orcado > 0 ? `${c.percentual.toFixed(1)}%` : '—')
