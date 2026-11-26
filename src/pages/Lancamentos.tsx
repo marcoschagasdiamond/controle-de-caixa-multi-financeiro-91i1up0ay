@@ -129,8 +129,8 @@ export default function LancamentosPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [erroContraparte, setErroContraparte] = useState<string | null>(null)
 
-  // Filtros da Listagem
-  const [filtroFin, setFiltroFin] = useState<string>('todos')
+  // Filtros da Listagem (o filtro de FINANCEIRO saiu daqui: a lista é sempre
+  // filtrada pela empresa escolhida no card do Passo 1)
   const [filtroConta, setFiltroConta] = useState<string>('todas')
   const [filtroTipo, setFiltroTipo] = useState<'todos' | 'credito' | 'debito'>('todos')
   const [filtroStatus, setFiltroStatus] = useState<'todos' | 'previsto' | 'realizado'>('todos')
@@ -540,7 +540,8 @@ export default function LancamentosPage() {
   // Filtragem local para exibição rápida
   const lancamentosFiltrados = useMemo(() => {
     return lancamentos.filter((l) => {
-      if (filtroFin !== 'todos' && l.financeiro_id !== filtroFin) return false
+      // A lista vem sempre filtrada pela empresa selecionada no card do Passo 1
+      if (selectedFinId && l.financeiro_id !== selectedFinId) return false
       if (filtroConta !== 'todas' && l.conta_id !== filtroConta) return false
       if (filtroTipo !== 'todos' && l.tipo !== filtroTipo) return false
       if (filtroStatus !== 'todos' && l.status !== filtroStatus) return false
@@ -559,7 +560,7 @@ export default function LancamentosPage() {
     })
   }, [
     lancamentos,
-    filtroFin,
+    selectedFinId,
     filtroConta,
     filtroTipo,
     filtroStatus,
@@ -659,62 +660,25 @@ export default function LancamentosPage() {
         </div>
       </div>
 
-      {/* FORMULÁRIO EM 3 PASSOS */}
-      <Card
-        ref={formularioRef}
-        className={`bg-[#141A22] text-white shadow-2xl scroll-mt-4 transition-colors ${
-          editandoId || editandoRecorrenteId
-            ? 'border-2 border-[#FFB020] ring-4 ring-[#FFB020]/20'
-            : 'border-[#232B36]'
-        }`}
-      >
-        <CardHeader className="pb-4 border-b border-[#232B36]">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-bold flex items-center gap-2 text-white">
-              <PlusCircle className="w-5 h-5 text-[#00D68F]" />
-              {formTitle}
-            </CardTitle>
-            {editandoId || editandoRecorrenteId ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={cancelarEdicao}
-                className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633]"
-              >
-                <X className="w-3.5 h-3.5 mr-1.5" />
-                Cancelar edição
-              </Button>
-            ) : (
-              <span className="text-xs text-gray-400 uppercase font-semibold">
-                Lançamento em Sequência Ativo
-              </span>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="pt-6 space-y-6">
-          {formError && (
-            <Alert className="bg-[#FF5C5C]/15 border-[#FF5C5C]/50 text-[#FF5C5C]">
-              <AlertTriangle className="w-4 h-4 mr-2" />
-              <AlertDescription className="font-medium">{formError}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* PASSO 1: ESCOLHER FINANCEIRO (Cards coloridos com saldo/tipo) */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs uppercase tracking-wider text-gray-300 font-bold flex items-center gap-2">
+      {/* PASSO 1 — CARD FIXO (sticky): o seletor de empresa e o saldo ficam sempre
+          visíveis no topo ao rolar a página. O contêiner de rolagem é o <main> do
+          Layout, então o sticky funciona dentro dele (sem position:fixed). */}
+      <div className="md:sticky md:top-0 md:z-30 -mx-4 px-4 md:-mx-8 md:px-8 py-2 bg-[#0B0F14]">
+        <Card className="bg-[#141A22] text-white border-[#232B36] shadow-xl">
+          <CardContent className="py-4 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <Label className="text-xs uppercase tracking-wider text-gray-300 font-bold flex items-center gap-2 whitespace-nowrap">
                 <span className="w-5 h-5 rounded-full bg-[#00D68F] text-[#0B0F14] text-xs flex items-center justify-center font-black">
                   1
                 </span>
                 Passo 1: Selecione a Entidade Financeira (PF / PJ)
               </Label>
-              <span className="text-xs text-gray-500">
+              <span className="hidden lg:inline text-xs text-gray-500">
                 A segregação impede lançamentos entre entidades diferentes
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {financeiros.map((f) => {
                 const isSelected = selectedFinId === f.id
                 // Contas e saldo ATUAL deste financeiro (base + lançamentos realizados)
@@ -775,7 +739,52 @@ export default function LancamentosPage() {
                 )
               })}
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* FORMULÁRIO EM 3 PASSOS (Passos 2 e 3 — o Passo 1 ficou no card fixo acima).
+          scroll-mt compensa a altura do card sticky para o scrollIntoView da edição
+          não deixar o topo do formulário escondido atrás dele. */}
+      <Card
+        ref={formularioRef}
+        className={`bg-[#141A22] text-white shadow-2xl scroll-mt-4 md:scroll-mt-[280px] lg:scroll-mt-[180px] transition-colors ${
+          editandoId || editandoRecorrenteId
+            ? 'border-2 border-[#FFB020] ring-4 ring-[#FFB020]/20'
+            : 'border-[#232B36]'
+        }`}
+      >
+        <CardHeader className="pb-4 border-b border-[#232B36]">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg font-bold flex items-center gap-2 text-white">
+              <PlusCircle className="w-5 h-5 text-[#00D68F]" />
+              {formTitle}
+            </CardTitle>
+            {editandoId || editandoRecorrenteId ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={cancelarEdicao}
+                className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633]"
+              >
+                <X className="w-3.5 h-3.5 mr-1.5" />
+                Cancelar edição
+              </Button>
+            ) : (
+              <span className="text-xs text-gray-400 uppercase font-semibold">
+                Lançamento em Sequência Ativo
+              </span>
+            )}
           </div>
+        </CardHeader>
+        <CardContent className="pt-6 space-y-6">
+          {formError && (
+            <Alert className="bg-[#FF5C5C]/15 border-[#FF5C5C]/50 text-[#FF5C5C]">
+              <AlertTriangle className="w-4 h-4 mr-2" />
+              <AlertDescription className="font-medium">{formError}</AlertDescription>
+            </Alert>
+          )}
 
           {/* PASSO 2: ESCOLHER DÉBITO OU CRÉDITO */}
           <div className="space-y-2 pt-2">
@@ -1224,23 +1233,7 @@ export default function LancamentosPage() {
           </div>
 
           {/* Barra de Filtros */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-3">
-            <div>
-              <Label className="text-[10px] text-gray-400 uppercase font-bold">Financeiro</Label>
-              <select
-                value={filtroFin}
-                onChange={(e) => setFiltroFin(e.target.value)}
-                className="w-full h-8 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
-              >
-                <option value="todos">Todos os Financeiros</option>
-                {financeiros.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.nome} ({f.tipo})
-                  </option>
-                ))}
-              </select>
-            </div>
-
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 pt-3">
             <div>
               <Label className="text-[10px] text-gray-400 uppercase font-bold">Tipo</Label>
               <select
@@ -1292,7 +1285,6 @@ export default function LancamentosPage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setFiltroFin('todos')
                   setFiltroConta('todas')
                   setFiltroTipo('todos')
                   setFiltroStatus('todos')
@@ -1444,7 +1436,7 @@ export default function LancamentosPage() {
       <RecebiveisSemData
         financeiros={financeiros}
         planos={planos}
-        financeiroPadraoId={filtroFin !== 'todos' ? filtroFin : undefined}
+        financeiroPadraoId={selectedFinId || undefined}
       />
 
       {/* Confirmação de exclusão de recorrente (Projeção Anual) */}
