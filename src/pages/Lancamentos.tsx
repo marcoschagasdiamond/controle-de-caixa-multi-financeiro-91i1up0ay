@@ -48,7 +48,7 @@ import {
 import { Check, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useToast } from '@/hooks/use-toast'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { baixarCSV, valorCSV } from '@/lib/csv'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import { useAuth } from '@/hooks/use-auth'
@@ -61,6 +61,7 @@ import { LancamentoRecorrente } from '@/types/financeiro'
 export default function LancamentosPage() {
   const { toast } = useToast()
   const navigate = useNavigate()
+  const location = useLocation()
 
   // Estados dos dados mestres
   const [financeiros, setFinanceiros] = useState<Financeiro[]>([])
@@ -91,6 +92,8 @@ export default function LancamentosPage() {
   const [descricao, setDescricao] = useState('')
   const [valor, setValor] = useState('')
   const [dataLancamento, setDataLancamento] = useState(getTodayISODate())
+  // Vencimento (opcional): data prevista; a Data acima é a do pagamento/recebimento
+  const [dataVencimento, setDataVencimento] = useState('')
   const [selectedContaId, setSelectedContaId] = useState('')
   const [selectedPlanoId, setSelectedPlanoId] = useState('')
   const [statusLancamento, setStatusLancamento] = useState<'previsto' | 'realizado'>('realizado')
@@ -265,6 +268,7 @@ export default function LancamentosPage() {
     setDescricao(l.descricao)
     setValor(String(l.valor).includes('.') ? String(l.valor) : String(l.valor))
     setDataLancamento(l.data)
+    setDataVencimento(l.data_vencimento || '')
     setStatusLancamento(l.status)
     setContraparte(l.contraparte || '')
     setDocumento(l.documento || '')
@@ -286,6 +290,16 @@ export default function LancamentosPage() {
     })
   }
 
+  // Vindo do card de Alertas de vencimento (Painel): abre o lançamento em edição
+  useEffect(() => {
+    const idAlvo = (location.state as { editarLancamentoId?: string } | null)?.editarLancamentoId
+    if (!idAlvo || loading) return
+    const alvo = lancamentos.find((l) => l.id === idAlvo)
+    if (!alvo) return
+    iniciarEdicao(alvo)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.state, lancamentos, loading])
+
   // Cancela a edição e volta ao modo de criação
   const cancelarEdicao = () => {
     setEditandoId(null)
@@ -297,6 +311,7 @@ export default function LancamentosPage() {
     setDocumento('')
     setObservacao('')
     setDataLancamento(getTodayISODate())
+    setDataVencimento('')
     setStatusLancamento('realizado')
     setTipoRecorrencia('nenhuma')
     setTotalParcelas('')
@@ -315,6 +330,7 @@ export default function LancamentosPage() {
     setDescricao(r.descricao)
     setValor(String(r.valor))
     setDataLancamento(r.data_inicial)
+    setDataVencimento('')
     setStatusLancamento('previsto')
     setSelectedContaId(r.conta_id)
     setSelectedPlanoId(r.plano_conta_id)
@@ -411,6 +427,7 @@ export default function LancamentosPage() {
           tipo: tipoLancamento,
           valor: valorNum,
           data: dataLancamento,
+          data_vencimento: dataVencimento || null,
           descricao: descricao.trim(),
           status: statusLancamento,
           contraparte: contraparte.trim() || null,
@@ -439,6 +456,7 @@ export default function LancamentosPage() {
         tipo: tipoLancamento,
         valor: valorNum,
         data: dataLancamento,
+        data_vencimento: dataVencimento || null,
         descricao: descricao.trim(),
         status: statusLancamento,
         contraparte: contraparte.trim() || null,
@@ -491,6 +509,7 @@ export default function LancamentosPage() {
       setDocumento('')
       setObservacao('')
       setDataLancamento(getTodayISODate())
+      setDataVencimento('')
       setTipoRecorrencia('nenhuma')
       setTotalParcelas('')
       setObservacaoRecorrente('')
@@ -931,10 +950,13 @@ export default function LancamentosPage() {
                 </div>
               </div>
 
-              {/* Data (padrão hoje) */}
+              {/* Data do pagamento/recebimento (padrão hoje) */}
               <div className="space-y-1">
-                <Label className="text-xs text-gray-400 font-medium">Data *</Label>
+                <Label htmlFor="lanc-data" className="text-xs text-gray-400 font-medium">
+                  Data do pagamento/recebimento *
+                </Label>
                 <Input
+                  id="lanc-data"
                   type="date"
                   required
                   value={dataLancamento}
@@ -942,6 +964,22 @@ export default function LancamentosPage() {
                   className="bg-[#0B0F14] border-[#232B36] text-white"
                 />
               </div>
+
+              {/* Vencimento (opcional): data prevista; pagar depois dela = em atraso */}
+              {!editandoRecorrenteId && (
+                <div className="space-y-1">
+                  <Label htmlFor="lanc-vencimento" className="text-xs text-gray-400 font-medium">
+                    Vencimento (opcional)
+                  </Label>
+                  <Input
+                    id="lanc-vencimento"
+                    type="date"
+                    value={dataVencimento}
+                    onChange={(e) => setDataVencimento(e.target.value)}
+                    className="bg-[#0B0F14] border-[#232B36] text-white"
+                  />
+                </div>
+              )}
 
               {/* Conta Bancária (SOMENTE do financeiro selecionado) */}
               <div className="space-y-1">

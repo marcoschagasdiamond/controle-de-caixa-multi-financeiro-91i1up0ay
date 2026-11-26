@@ -91,7 +91,8 @@ export interface Lancamento {
   plano_conta_id: string
   tipo: 'credito' | 'debito'
   valor: number
-  data: string // YYYY-MM-DD
+  data: string // YYYY-MM-DD (previsto: vencimento; realizado: data do pagamento/recebimento)
+  data_vencimento?: string | null // YYYY-MM-DD, opcional: data prevista de vencimento
   descricao: string
   status: 'previsto' | 'realizado'
   contraparte?: string | null

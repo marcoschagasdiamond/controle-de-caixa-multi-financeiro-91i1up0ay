@@ -18,6 +18,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AlertaContasFixas } from '@/components/AlertaContasFixas'
+import { AlertasVencimento } from '@/components/AlertasVencimento'
 import { PainelGraficos } from '@/components/PainelGraficos'
 import {
   DollarSign,
@@ -779,6 +780,9 @@ export default function Index() {
           </ul>
         </section>
       )}
+
+      {/* ALERTAS DE VENCIMENTO: lançamentos previstos atrasados/vencendo e resolvidos em atraso */}
+      <AlertasVencimento lancamentos={lancamentos} financeiros={finsAcesso} />
 
       {/* ALERTA DIÁRIO: Contas fixas vencidas e vencendo nos próximos 7 dias */}
       <AlertaContasFixas
