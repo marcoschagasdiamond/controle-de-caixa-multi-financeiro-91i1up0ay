@@ -1,6 +1,6 @@
 {
   "_versions": {
-    "remover-usuario": 3,
-    "convidar-usuario": 3
+    "convidar-usuario": 4,
+    "remover-usuario": 4
   }
 }
