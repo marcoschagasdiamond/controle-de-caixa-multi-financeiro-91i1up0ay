@@ -250,3 +250,50 @@
     animation: spotlight 2s ease forwards;
   }
 }
+
+/* ===== Impressão / PDF (relatórios: DRE) ===== */
+/* Esconde menu, seletores e cards de resumo: imprime apenas o relatório */
+@media print {
+  body {
+    background: #ffffff !important;
+  }
+
+  aside,
+  header {
+    display: none !important;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Tabelas do DRE em fundo branco, preservando cores semânticas */
+  .dre-print-area table {
+    color: #111827;
+  }
+
+  .dre-print-area th,
+  .dre-print-area td {
+    border-color: #d1d5db !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+  }
+
+  .dre-print-area thead th {
+    color: #374151 !important;
+  }
+
+  .dre-print-area tr[bgcolor],
+  .dre-print-area .dre-keep {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .dre-print-area .dre-pos {
+    color: #047857 !important;
+  }
+
+  .dre-print-area .dre-neg {
+    color: #b91c1c !important;
+  }
+}

@@ -14,6 +14,7 @@ import FechamentoPage from '@/pages/Fechamento'
 import ConfiguracoesPage from '@/pages/Configuracoes'
 import ComparativoAnualPage from '@/pages/ComparativoAnual'
 import RelatorioPessoaPage from '@/pages/RelatorioPessoa'
+import DREPage from '@/pages/DRE'
 import NotFound from '@/pages/NotFound'
 
 const router = createBrowserRouter([
@@ -31,6 +32,7 @@ const router = createBrowserRouter([
       { path: 'mutuos', element: <MutuosPage /> },
       { path: 'fechamento', element: <FechamentoPage /> },
       { path: 'comparativo-anual', element: <ComparativoAnualPage /> },
+      { path: 'dre', element: <DREPage /> },
       { path: 'extrato-favorecido', element: <RelatorioPessoaPage /> },
       { path: 'relatorio-pessoa', element: <Navigate to="/extrato-favorecido" replace /> },
       { path: 'configuracoes', element: <ConfiguracoesPage /> },

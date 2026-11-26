@@ -21,6 +21,7 @@ import {
   PlusCircle,
   GitCompareArrows,
   UserSearch,
+  BarChart3,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -75,6 +76,7 @@ export default function Layout() {
     { to: '/mutuos', label: 'Mútuos', icon: Building2 },
     { to: '/fechamento', label: 'Fechamento', icon: FileText },
     { to: '/comparativo-anual', label: 'Comparativo Anual', icon: GitCompareArrows },
+    { to: '/dre', label: 'DRE', icon: BarChart3 },
     { to: '/extrato-favorecido', label: 'Extrato por Favorecido', icon: UserSearch },
     { to: '/configuracoes', label: 'Configurações', icon: Settings },
   ]
