@@ -545,6 +545,18 @@ export const FinanceiroService = {
     return (data as Budget[]) || []
   },
 
+  // Orçado de um ano inteiro (12 meses) de um financeiro — para o DRE no modo
+  // "Ano completo" comparar orçado vs realizado (+projeção) pelo total do ano.
+  async getBudgetsAno(financeiroId: string, ano: number): Promise<Budget[]> {
+    const { data, error } = await supabase
+      .from('budgets')
+      .select('*')
+      .eq('financeiro_id', financeiroId)
+      .like('mes_ano', `${ano}-%`)
+    if (error) throw error
+    return (data as Budget[]) || []
+  },
+
   async upsertBudget(payload: {
     financeiro_id: string
     plano_conta_id: string

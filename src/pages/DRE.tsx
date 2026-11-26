@@ -1,7 +1,10 @@
 // DRE simples por categoria: receitas e despesas REALIZADAS do período,
 // agrupadas pelos GRUPOS do plano de contas (tabela grupos_plano_contas —
 // plano GLOBAL, compartilhado entre financeiros). Modo mês ou "Ano completo"
-// com colunas dos 12 meses + Total Ano. Previstos NÃO entram.
+// com colunas dos 12 meses + Total Ano. Previstos NÃO entram (a não ser com
+// o interruptor de projeção no modo Ano completo). COMPARAÇÃO COM O ORÇADO:
+// orçado (tabela budgets, por categoria e mês) vs realizado, com variação em
+// R$ e % — src/lib/dreOrcado.ts + src/components/DreTabela.tsx.
 // Impressão/PDF pela impressão do navegador (mesma abordagem do Fechamento).
 
 import { useState, useEffect, useMemo } from 'react'
@@ -12,13 +15,16 @@ import {
   PlanoGrupo,
   Lancamento,
   LancamentoRecorrente,
+  Budget,
 } from '@/types/financeiro'
 import { formatCurrency } from '@/lib/formatters'
 import { baixarCSV, valorCSV } from '@/lib/csv'
 import { calcularProjecaoPorPlano } from '@/lib/dreProjetado'
+import { calcularComp, sinalComp, percentualComp, classeComp } from '@/lib/dreOrcado'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
+import BlocoTabelaDRE from '@/components/DreTabela'
 import {
   Building2,
   Calendar,
@@ -64,7 +70,8 @@ const MESES_LONGOS = [
 
 interface LinhaCategoria {
   plano: PlanoConta
-  valores: number[] // 12 posições (0 = jan)
+  valores: number[] // realizado, 12 posições (0 = jan)
+  orcado: number[] // orçado do mês por categoria (0 = sem budget)
   projetado: boolean[] // posição tem componente projetado (com projeção ativa)
 }
 
@@ -72,25 +79,31 @@ interface GrupoDRE {
   grupo: PlanoGrupo | null
   linhas: LinhaCategoria[]
   subtotal: number[]
+  subtotalOrcado: number[] // orçado somado das categorias do grupo
   temProjecaoMes: boolean[] // algum valor do grupo tem componente projetado (por mês)
 }
 
-interface BlocoDRE {
+export interface BlocoDRE {
   grupos: GrupoDRE[]
   total: number[]
+  totalOrcado: number[] // orçado somado de todo o bloco
   temProjecao: boolean // algum valor com componente projetado (para a legenda)
   temProjecaoMes: boolean[] // algum valor do BLOCO tem componente projetado (por mês)
 }
 
+const zero12 = () => Array.from({ length: 12 }, () => 0)
+
 // Monta um bloco (receitas ou despesas): soma os lançamentos realizados por
 // categoria/mês e agrupa pelas categorias pertencentes a cada grupo do plano.
-// Categorias sem movimento no período não aparecem (exceto categorias que só
-// têm projeção, quando o modo Ano completo inclui projeção). Categorias sem
-// grupo caem no bucket "Sem grupo" (último).
+// Categorias sem movimento no período não aparecem, EXCETO as orçadas no
+// período (entram com realizado zero, para a comparação fechar) e as que só
+// têm projeção no modo Ano completo com o toggle ativo. Categorias sem grupo
+// caem no bucket "Sem grupo" (último).
 // projecao (opcional, modo Ano completo com toggle): plano_conta_id → valores
 // projetados por mês. Somada ao realizado da coluna; a ocorrência de recorrente
 // já dedupada contra lançamento realizado equivalente não entra de novo
 // (dedupe feito em calcularProjecaoPorPlano, src/lib/dreProjetado.ts).
+// orcados: plano_conta_id → orçado por mês (Map de src/lib/dreOrcado.ts).
 function montarBloco(
   tipo: 'receita' | 'despesa',
   prefixoPeriodo: string, // "YYYY-MM" ou "YYYY"
@@ -99,6 +112,7 @@ function montarBloco(
   lancamentos: Lancamento[],
   finId: string,
   projecao?: Map<string, number[]>,
+  orcados?: Map<string, number[]>,
 ): BlocoDRE {
   const tipoLanc = tipo === 'receita' ? 'credito' : 'debito'
   const mapa = new Map<string, number[]>()
@@ -113,7 +127,7 @@ function montarBloco(
     if (!(m >= 0 && m <= 11)) continue
     let arr = mapa.get(l.plano_conta_id)
     if (!arr) {
-      arr = Array.from({ length: 12 }, () => 0)
+      arr = zero12()
       mapa.set(l.plano_conta_id, arr)
     }
     arr[m] += Math.abs(Number(l.valor) || 0)
@@ -129,12 +143,9 @@ function montarBloco(
     if (!plano.ativo) continue
     let arr = mapa.get(planoId)
     if (!arr) {
-      arr = Array.from({ length: 12 }, () => 0)
+      arr = zero12()
       mapa.set(planoId, arr)
-      marcasProj.set(
-        planoId,
-        Array.from({ length: 12 }, () => false),
-      )
+      marcasProj.set(planoId, zero12())
     }
     const marcas = marcasProj.get(planoId)
     projArr.forEach((v, m) => {
@@ -144,13 +155,22 @@ function montarBloco(
     })
   }
 
+  // Categorias orçadas mas sem movimento realizado TAMBÉM entram (realizado zero)
+  for (const [planoId, orcadoArr] of orcados) {
+    if (!orcadoArr.some((v) => v !== 0)) continue
+    if (mapa.has(planoId)) continue
+    const plano = planos.find((p) => p.id === planoId)
+    if (!plano || plano.tipo !== tipo) continue
+    mapa.set(planoId, zero12())
+  }
+
   // Grupos deste tipo, na ordem de cadastro (ordem/nome), + "Sem grupo" no fim
   const gruposDoTipo = grupos.filter((g) => g.tipo === tipo)
   const porGrupo = new Map<string | null, LinhaCategoria[]>()
   for (const g of gruposDoTipo) porGrupo.set(g.id, [])
 
   for (const [planoId, valores] of mapa) {
-    if (!valores.some((v) => v !== 0)) continue
+    if (!valores.some((v) => v !== 0) && !(orcados.get(planoId)?.some((v) => v !== 0))) continue
     const plano = planos.find((p) => p.id === planoId)
     const linha: LinhaCategoria = {
       plano: plano ?? {
@@ -162,7 +182,8 @@ function montarBloco(
         ativo: true,
       },
       valores,
-      projetado: marcasProj.get(planoId) || Array.from({ length: 12 }, () => false),
+      orcado: orcados?.get(planoId) || zero12(),
+      projetado: marcasProj.get(planoId) || zero12(),
     }
     const gid = plano?.grupo_id ?? null
     const lista = porGrupo.get(gid)
@@ -171,7 +192,8 @@ function montarBloco(
   }
 
   const saidaGrupos: GrupoDRE[] = []
-  let total = Array.from({ length: 12 }, () => 0)
+  const total = zero12()
+  const totalOrcado = zero12()
   let temProjecao = false
   for (const g of gruposDoTipo) {
     const linhas = porGrupo.get(g.id) || []
@@ -179,35 +201,57 @@ function montarBloco(
     linhas.sort((a, b) => (a.plano.codigo || '').localeCompare(b.plano.codigo || ''))
     const subtotal = linhas.reduce(
       (acc, l) => acc.map((v, i) => v + l.valores[i]),
-      Array.from({ length: 12 }, () => 0),
+      zero12(),
+    )
+    const subtotalOrcado = linhas.reduce(
+      (acc, l) => acc.map((v, i) => v + l.orcado[i]),
+      zero12(),
     )
     const temProjecaoMes = Array.from({ length: 12 }, (_, i) => linhas.some((l) => l.projetado[i]))
-    total = total.map((v, i) => v + subtotal[i])
+    for (let i = 0; i < 12; i++) {
+      total[i] += subtotal[i]
+      totalOrcado[i] += subtotalOrcado[i]
+    }
     if (temProjecaoMes.some(Boolean)) temProjecao = true
-    saidaGrupos.push({ grupo: g, linhas, subtotal, temProjecaoMes })
+    saidaGrupos.push({ grupo: g, linhas, subtotal, subtotalOrcado, temProjecaoMes })
   }
   const semGrupo = porGrupo.get(null) || []
   if (semGrupo.length > 0) {
     semGrupo.sort((a, b) => (a.plano.codigo || '').localeCompare(b.plano.codigo || ''))
     const subtotal = semGrupo.reduce(
       (acc, l) => acc.map((v, i) => v + l.valores[i]),
-      Array.from({ length: 12 }, () => 0),
+      zero12(),
+    )
+    const subtotalOrcado = semGrupo.reduce(
+      (acc, l) => acc.map((v, i) => v + l.orcado[i]),
+      zero12(),
     )
     const temProjecaoMes = Array.from({ length: 12 }, (_, i) =>
       semGrupo.some((l) => l.projetado[i]),
     )
-    total = total.map((v, i) => v + subtotal[i])
+    for (let i = 0; i < 12; i++) {
+      total[i] += subtotal[i]
+      totalOrcado[i] += subtotalOrcado[i]
+    }
     if (temProjecaoMes.some(Boolean)) temProjecao = true
-    saidaGrupos.push({ grupo: null, linhas: semGrupo, subtotal, temProjecaoMes })
+    saidaGrupos.push({ grupo: null, linhas: semGrupo, subtotal, subtotalOrcado, temProjecaoMes })
   }
 
   const temProjecaoMes = Array.from({ length: 12 }, (_, i) =>
     saidaGrupos.some((g) => g.temProjecaoMes[i]),
   )
-  return { grupos: saidaGrupos, total, temProjecao, temProjecaoMes }
+  return { grupos: saidaGrupos, total, totalOrcado, temProjecao, temProjecaoMes }
 }
 
 const somaPeriodo = (valores: number[]) => valores.reduce((a, b) => a + b, 0)
+
+const blocoVazio = (): BlocoDRE => ({
+  grupos: [],
+  total: zero12(),
+  totalOrcado: zero12(),
+  temProjecao: false,
+  temProjecaoMes: zero12(),
+})
 
 export default function DREPage() {
   const [financeiros, setFinanceiros] = useState<Financeiro[]>([])
@@ -215,6 +259,7 @@ export default function DREPage() {
   const [grupos, setGrupos] = useState<PlanoGrupo[]>([])
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([])
   const [recorrentes, setRecorrentes] = useState<LancamentoRecorrente[]>([])
+  const [budgets, setBudgets] = useState<Budget[]>([])
   const [loading, setLoading] = useState(true)
 
   // Toggle "Incluir projeção (recorrentes + parcelas)" — só no modo Ano completo
@@ -241,16 +286,18 @@ export default function DREPage() {
   const carregarDados = async () => {
     try {
       setLoading(true)
-      const [pls, gps, lcs, rcs] = await Promise.all([
+      const [pls, gps, lcs, rcs, bgs] = await Promise.all([
         FinanceiroService.getPlanoContas(),
         FinanceiroService.getPlanoGrupos(),
         FinanceiroService.getLancamentos(),
         FinanceiroService.getLancamentosRecorrentes(),
+        FinanceiroService.getBudgetsAno(selectedFinId, anoSel),
       ])
       setPlanos(pls)
       setGrupos(gps)
       setLancamentos(lcs)
       setRecorrentes(rcs)
+      setBudgets(bgs)
     } catch (err) {
       console.error('Erro ao carregar DRE:', err)
     } finally {
@@ -260,7 +307,8 @@ export default function DREPage() {
 
   useEffect(() => {
     carregarDados()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedFinId, anoSel])
 
   // Anos do seletor: base atual ±5, estendida pelos anos presentes nos lançamentos
   const anosDisponiveis = useMemo(() => {
@@ -294,6 +342,14 @@ export default function DREPage() {
 
   const prefixoPeriodo = modoAno ? `${anoSel}-` : selectedMes
 
+  // Orçado por categoria e mês (Map plano_conta_id → 12 posições) a partir dos
+  // budgets do financeiro — no modo mês, os 12 meses são carregados e o mês
+  // escolhido é o que entra na comparação; no modo ano, todas as posições.
+  const orcadosPorPlano = useMemo(
+    () => orcadoMapa(budgets, selectedFinId),
+    [budgets, selectedFinId],
+  )
+
   // Projeção anual por categoria (só no modo Ano completo com o toggle ativo):
   // ocorrências de recorrentes/parcelas do financeiro no ano selecionado.
   const projecaoPorPlano = useMemo(
@@ -315,13 +371,9 @@ export default function DREPage() {
             lancamentos,
             selectedFinId,
             modoAno && incluirProjecao ? projecaoPorPlano : undefined,
+            orcadosPorPlano,
           )
-        : {
-            grupos: [],
-            total: Array.from({ length: 12 }, () => 0),
-            temProjecao: false,
-            temProjecaoMes: Array.from({ length: 12 }, () => false),
-          },
+        : blocoVazio(),
     [
       prefixoPeriodo,
       planos,
@@ -331,6 +383,7 @@ export default function DREPage() {
       modoAno,
       incluirProjecao,
       projecaoPorPlano,
+      orcadosPorPlano,
     ],
   )
 
@@ -345,13 +398,9 @@ export default function DREPage() {
             lancamentos,
             selectedFinId,
             modoAno && incluirProjecao ? projecaoPorPlano : undefined,
+            orcadosPorPlano,
           )
-        : {
-            grupos: [],
-            total: Array.from({ length: 12 }, () => 0),
-            temProjecao: false,
-            temProjecaoMes: Array.from({ length: 12 }, () => false),
-          },
+        : blocoVazio(),
     [
       prefixoPeriodo,
       planos,
@@ -361,6 +410,7 @@ export default function DREPage() {
       modoAno,
       incluirProjecao,
       projecaoPorPlano,
+      orcadosPorPlano,
     ],
   )
 
@@ -368,20 +418,35 @@ export default function DREPage() {
   const totalDespesas = somaPeriodo(despesas.total)
   const resultado = totalReceitas - totalDespesas
 
+  // Orçados e variações dos totais do período (cards e RESULTADO)
+  const mesIdx = Number(selectedMes.slice(5, 7)) - 1
+  const compReceitas = calcularComp(receitas.totalOrcado, receitas.total, modoAno, mesIdx)
+  const compDespesas = calcularComp(despesas.totalOrcado, despesas.total, modoAno, mesIdx)
+  const orcadoResultado = compReceitas.orcado - compDespesas.orcado
+  const variacaoResultado = compReceitas.variacaoR$ - compDespesas.variacaoR$
+  const percentualResultado = orcadoResultado > 0 ? (resultado / orcadoResultado) * 100 : 0
+  const temBudgetPeriodo =
+    compReceitas.orcado > 0 || compDespesas.orcado > 0
+
   const finSel = financeiros.find((f) => f.id === selectedFinId)
   const rotuloPeriodo = modoAno
     ? `Ano completo ${anoSel}`
-    : `${MESES_LONGOS[Number(selectedMes.slice(5, 7)) - 1]}/${selectedMes.slice(0, 4)}`
+    : `${MESES_LONGOS[mesIdx]}/${selectedMes.slice(0, 4)}`
   // Rótulo dos cards de resumo: a projeção muda o que os totais representam
   const rotuloRebuilt = modoAno
     ? incluirProjecao
       ? `Realizado + projeção · ${anoSel}`
       : `Realizado · Ano completo ${anoSel}`
     : `Realizado · ${rotuloPeriodo}`
+  // Rótulo da comparação no modo ano com projeção (o que está sendo comparado)
+  const rotuloComp = modoAno
+    ? incluirProjecao
+      ? 'orçado do ano vs realizado + projetado'
+      : 'orçado do ano vs realizado'
+    : 'orçado do mês vs realizado'
 
-  const colSpan = modoAno ? 14 : 2
-
-  // Exportar CSV: linhas do DRE (categorias, subtotais por grupo, totais e resultado)
+  // Exportar CSV: linhas do DRE (categorias, subtotais por grupo, totais e
+  // resultado) COM as colunas de orçado e variação quando há budget no período.
   const handleExportarCSV = () => {
     const finNome = finSel?.nome || 'financeiro'
     const slug = finNome
@@ -397,15 +462,29 @@ export default function DREPage() {
     } else {
       cabecalho.push('Valor (R$)')
     }
+    if (temBudgetPeriodo) {
+      cabecalho.push('Orçado (R$)', 'Var. R$ (orçado − realizado)', 'Var. %')
+    }
 
     const linhas: unknown[][] = []
-    const linhaDe = (bloco: string, grupo: string, cat: string, valores: number[]) => {
+    // Realizado do período (mês ou soma do ano) + orçado e variação da linha
+    const linhaDe = (bloco: string, grupo: string, cat: string, valores: number[], orcado: number[]) => {
+      const comp = calcularComp(orcado, valores, modoAno, mesIdx)
+      const tipo: 'receita' | 'despesa' = bloco === 'RECEITAS' ? 'receita' : 'despesa'
       const reg: unknown[] = [bloco, grupo, cat]
       if (modoAno) {
         reg.push(...valores.map(valorCSV), valorCSV(somaPeriodo(valores)))
       } else {
-        const m = Number(selectedMes.slice(5, 7)) - 1
-        reg.push(valorCSV(valores[m]))
+        reg.push(valorCSV(valores[mesIdx]))
+      }
+      if (temBudgetPeriodo) {
+        reg.push(
+          valorCSV(comp.orcado),
+          comp.orcado === 0
+            ? ''
+            : `${sinalComp(comp, tipo)}${valorCSV(Math.abs(comp.variacaoR$))}`,
+          comp.orcado === 0 ? '' : `${sinalComp(comp, tipo)}${percentualComp(comp)}`,
+        )
       }
       linhas.push(reg)
     }
@@ -414,20 +493,25 @@ export default function DREPage() {
       ['RECEITAS', receitas],
       ['DESPESAS', despesas],
     ] as const) {
+      const tipo = nomeBloco === 'RECEITAS' ? 'receita' : 'despesa'
       for (const g of bloco.grupos) {
         const nomeGrupo = g.grupo?.nome || 'Sem grupo'
         for (const l of g.linhas) {
-          linhaDe(nomeBloco, nomeGrupo, `${l.plano.codigo} ${l.plano.descricao}`.trim(), l.valores)
+          linhaDe(nomeBloco, nomeGrupo, `${l.plano.codigo} ${l.plano.descricao}`.trim(), l.valores, l.orcado)
         }
-        linhaDe(nomeBloco, nomeGrupo, `Subtotal ${nomeGrupo}`, g.subtotal)
+        linhaDe(nomeBloco, nomeGrupo, `Subtotal ${nomeGrupo}`, g.subtotal, g.subtotalOrcado)
       }
       linhaDe(
         nomeBloco,
         '',
         `Total de ${nomeBloco.charAt(0)}${nomeBloco.slice(1).toLowerCase()}`,
         bloco.total,
+        bloco.totalOrcado,
       )
     }
+
+    // RESULTADO: orçado de receitas − orçado de despesas; variação = quanto o
+    // resultado ficou do planejado (positivo = melhor que o planejado)
     const res: unknown[] = ['RESULTADO', '', 'Total de Receitas − Total de Despesas']
     const resValores = receitas.total.map((v, i) => v - despesas.total[i])
     if (modoAno) {
@@ -435,100 +519,17 @@ export default function DREPage() {
     } else {
       res.push(valorCSV(resultado))
     }
+    if (temBudgetPeriodo) {
+      const melhor = variacaoResultado >= 0
+      res.push(
+        valorCSV(orcadoResultado),
+        `${melhor ? '+' : '−'}${valorCSV(Math.abs(variacaoResultado))}`,
+        `${melhor ? '+' : '−'}${percentualResultado.toFixed(1)}%`,
+      )
+    }
     linhas.push(res)
 
     baixarCSV(`dre-${slug}-${modo}.csv`, cabecalho, linhas)
-  }
-
-  // Tabela de um bloco (receitas ou despesas) nos dois modos
-  const BlocoTabela = ({
-    titulo,
-    bloco,
-    corClasse,
-    printPos,
-    exibirProjecao,
-  }: {
-    titulo: string
-    bloco: BlocoDRE
-    corClasse: string // cor dos totais na tela escura
-    printPos: 'dre-pos' | 'dre-neg' // cor preservada na impressão
-    exibirProjecao: boolean // marca células com componente projetado
-  }) => {
-    const totalPeriodo = somaPeriodo(bloco.total)
-    return (
-      <div className="border border-[#232B36] rounded-xl overflow-hidden">
-        <div className="bg-[#0B0F14] border-b border-[#232B36] px-4 py-2.5 flex items-center gap-2">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-white">{titulo}</h3>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-gray-300">
-            <thead className="bg-[#0B0F14] border-b border-[#232B36] text-xs text-gray-400 uppercase tracking-wider font-semibold">
-              <tr>
-                <th className="py-2.5 px-4 min-w-[220px]" scope="col">
-                  Categoria
-                </th>
-                {modoAno
-                  ? MESES_CURTOS.map((m) => (
-                      <th key={m} className="py-2.5 px-2 text-center" scope="col">
-                        {m}
-                      </th>
-                    ))
-                  : null}
-                <th className="py-2.5 px-4 text-right" scope="col">
-                  {modoAno ? 'Total Ano' : 'Valor'}
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#232B36]">
-              {bloco.grupos.length === 0 ? (
-                <tr>
-                  <td colSpan={colSpan} className="py-8 text-center text-gray-500 text-sm">
-                    Sem movimento realizado de {titulo.toLowerCase()} no período.
-                  </td>
-                </tr>
-              ) : (
-                bloco.grupos.map((g, gi) => (
-                  <CategoriaGrupoLinhas
-                    key={g.grupo?.id || `sem-${gi}`}
-                    grupoDre={g}
-                    modoAno={modoAno}
-                    mesIdx={Number(selectedMes.slice(5, 7)) - 1}
-                    exibirProjecao={exibirProjecao}
-                  />
-                ))
-              )}
-            </tbody>
-            <tfoot className="border-t border-[#232B36] bg-[#0B0F14]">
-              <tr>
-                <td className="py-2.5 px-4 text-sm font-bold text-white">Total de {titulo}</td>
-                {modoAno &&
-                  bloco.total.map((v, m) => (
-                    <td
-                      key={m}
-                      className={`py-2.5 px-2 text-center font-mono text-[11px] ${
-                        exibirProjecao && bloco.temProjecao[m]
-                          ? 'italic text-gray-400'
-                          : 'text-white'
-                      }`}
-                    >
-                      {v === 0
-                        ? '—'
-                        : `${formatCurrency(v).replace('R$', '').trim()}${
-                            exibirProjecao && bloco.temProjecao[m] ? ' *' : ''
-                          }`}
-                    </td>
-                  ))}
-                <td
-                  className={`py-2.5 px-4 text-right font-mono text-sm font-bold ${corClasse} ${printPos}`}
-                >
-                  {formatCurrency(totalPeriodo)}
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-    )
   }
 
   if (loading) {
@@ -561,6 +562,7 @@ export default function DREPage() {
             ? ' (realizado + projeção de recorrentes e parcelas)'
             : ' (somente realizado)'}
         </p>
+        {temBudgetPeriodo ? <p className="text-sm">Comparação: {rotuloComp}</p> : null}
         <p className="text-sm">Gerado em: {new Date().toLocaleString('pt-BR')}</p>
       </div>
 
@@ -706,7 +708,11 @@ export default function DREPage() {
           <div className="text-xl font-bold font-mono mt-1 text-[#00D68F]">
             {formatCurrency(totalReceitas)}
           </div>
-          <p className="text-[11px] text-gray-500 mt-1">{rotuloRebuilt}</p>
+          {temBudgetPeriodo ? (
+            <LinhaCompCard comp={compReceitas} tipo="receita" />
+          ) : (
+            <p className="text-[11px] text-gray-500 mt-1">{rotuloRebuilt}</p>
+          )}
         </Card>
 
         <Card className="bg-[#141A22] border-[#232B36] p-4 text-white">
@@ -717,7 +723,11 @@ export default function DREPage() {
           <div className="text-xl font-bold font-mono mt-1 text-[#FF5C5C]">
             {formatCurrency(totalDespesas)}
           </div>
-          <p className="text-[11px] text-gray-500 mt-1">{rotuloRebuilt}</p>
+          {temBudgetPeriodo ? (
+            <LinhaCompCard comp={compDespesas} tipo="despesa" />
+          ) : (
+            <p className="text-[11px] text-gray-500 mt-1">{rotuloRebuilt}</p>
+          )}
         </Card>
 
         <Card className="bg-[#141A22] border-[#232B36] p-4 text-white">
@@ -732,13 +742,34 @@ export default function DREPage() {
           >
             {formatCurrency(resultado)}
           </div>
-          <p className="text-[11px] text-gray-500 mt-1">
-            {resultado >= 0 ? 'Superávit no período' : 'Déficit no período'}
-          </p>
+          {temBudgetPeriodo ? (
+            <div className="text-[11px] mt-1">
+              <span className="text-gray-500">Orçado: </span>
+              <span className="text-gray-300 font-mono">{formatCurrency(orcadoResultado)}</span>
+              {orcadoResultado !== 0 ? (
+                <>
+                  {' · '}
+                  <span
+                    className={`font-mono font-semibold ${
+                      variacaoResultado >= 0 ? 'text-[#00D68F]' : 'text-[#FF5C5C]'
+                    }`}
+                  >
+                    {variacaoResultado >= 0 ? '+' : '−'}
+                    {formatCurrency(Math.abs(variacaoResultado)).replace('R$', '').trim()} (
+                    {percentualResultado.toFixed(1)}% do previsto)
+                  </span>
+                </>
+              ) : null}
+            </div>
+          ) : (
+            <p className="text-[11px] text-gray-500 mt-1">
+              {resultado >= 0 ? 'Superávit no período' : 'Déficit no período'}
+            </p>
+          )}
         </Card>
       </div>
 
-      {/* Legenda da projeção: sempre presente no modo Ano completo com toggle ativo */}
+      {/* Legenda da projeção: modo Ano completo com toggle ativo */}
       {modoAno && incluirProjecao ? (
         <div className="bg-[#141A22] border border-[#232B36] rounded-xl px-4 py-3 text-xs text-gray-400 print:text-black">
           <span className="font-semibold text-gray-300 print:text-black">
@@ -754,6 +785,19 @@ export default function DREPage() {
         </div>
       ) : null}
 
+      {/* Legenda da comparação com o orçado */}
+      {temBudgetPeriodo ? (
+        <div className="bg-[#141A22] border border-[#232B36] rounded-xl px-4 py-3 text-xs text-gray-400 print:text-black">
+          <span className="font-semibold text-gray-300 print:text-black">
+            Comparação com o orçado ({rotuloComp}):{' '}
+          </span>
+          <span className="text-[#00D68F]">verde</span> = dentro do planejado (despesa ≤90% do
+          orçado, receita ≥100%), <span className="text-amber-400">amarelo</span> = atenção
+          (90–100%), <span className="text-[#FF5C5C]">vermelho</span> = fora do planejado. Categorias
+          orçadas sem movimento aparecem com realizado zero.
+        </div>
+      ) : null}
+
       {/* Relatório DRE */}
       <div className="dre-print-area space-y-6">
         <div className="hidden print:flex items-center gap-2 justify-center pb-2">
@@ -763,113 +807,104 @@ export default function DREPage() {
           </span>
         </div>
 
-        <BlocoTabela
+        <BlocoTabelaDRE
           titulo="Receitas"
           bloco={receitas}
-          corClasse="text-[#00D68F]"
-          printPos="dre-pos"
+          tipo="receita"
+          modoAno={modoAno}
+          mesIdx={mesIdx}
           exibirProjecao={modoAno && incluirProjecao}
+          temBudget={temBudgetPeriodo}
         />
-        <BlocoTabela
+        <BlocoTabelaDRE
           titulo="Despesas"
           bloco={despesas}
-          corClasse="text-[#FF5C5C]"
-          printPos="dre-neg"
+          tipo="despesa"
+          modoAno={modoAno}
+          mesIdx={mesIdx}
           exibirProjecao={modoAno && incluirProjecao}
+          temBudget={temBudgetPeriodo}
         />
 
-        {/* RESULTADO: Receitas − Despesas */}
-        <div className="border border-[#232B36] rounded-xl bg-[#0B0F14] px-4 py-4 flex items-center justify-between">
+        {/* RESULTADO: Receitas − Despesas (com orçado e variação quando há budget) */}
+        <div className="border border-[#232B36] rounded-xl bg-[#0B0F14] px-4 py-4 flex flex-wrap items-center justify-between gap-3">
           <span className="text-base font-bold text-white uppercase tracking-wider">
             Resultado do Período
           </span>
-          <span
-            className={`text-lg font-bold font-mono ${
-              resultado >= 0 ? 'text-[#00D68F] dre-keep dre-pos' : 'text-[#FF5C5C] dre-keep dre-neg'
-            }`}
-          >
-            {formatCurrency(resultado)}
-          </span>
+          <div className="flex items-center gap-6">
+            {temBudgetPeriodo ? (
+              <div className="text-right">
+                <p className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">
+                  Orçado
+                </p>
+                <p className="text-sm font-mono text-gray-300">
+                  {formatCurrency(orcadoResultado)}
+                </p>
+              </div>
+            ) : null}
+            <span
+              className={`text-lg font-bold font-mono ${
+                resultado >= 0 ? 'text-[#00D68F] dre-keep dre-pos' : 'text-[#FF5C5C] dre-keep dre-neg'
+              }`}
+            >
+              {formatCurrency(resultado)}
+            </span>
+            {temBudgetPeriodo && orcadoResultado !== 0 ? (
+              <span
+                className={`text-sm font-mono font-semibold ${
+                  variacaoResultado >= 0
+                    ? 'text-[#00D68F] dre-keep dre-pos'
+                    : 'text-[#FF5C5C] dre-keep dre-neg'
+                }`}
+              >
+                {variacaoResultado >= 0 ? '+' : '−'}
+                {formatCurrency(Math.abs(variacaoResultado)).replace('R$', '').trim()} (
+                {percentualResultado.toFixed(1)}%)
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-// Linhas de um grupo do plano de contas: cabeçalho do grupo, linhas de categoria
-// e subtotal do grupo (mesmo padrão visual da Projeção Anual de Recorrentes).
-function CategoriaGrupoLinhas({
-  grupoDre,
-  modoAno,
-  mesIdx,
-  exibirProjecao,
-}: {
-  grupoDre: GrupoDRE
-  modoAno: boolean
-  mesIdx: number
-  exibirProjecao: boolean
-}) {
-  const g = grupoDre
-  // Célula com componente projetado: itálico apagado + asterisco (diferencia o
-  // realizado puro — valores "fechados" — da previsão de recorrentes/parcelas).
-  const celulaProj = (v: number, temProj: boolean) => {
-    if (v === 0) return '—'
-    const valor = formatCurrency(v).replace('R$', '').trim()
-    if (!(exibirProjecao && temProj)) return valor
-    return `${valor} *`
-  }
-  const classeProj = (v: number, temProj: boolean) =>
-    exibirProjecao && temProj && v !== 0 ? 'italic text-gray-400' : 'text-gray-200'
+// Linha de variação sob o valor dos cards de resumo (orçado + variação colorida)
+function LinhaCompCard({ comp, tipo }: { comp: ReturnType<typeof calcularComp>; tipo: 'receita' | 'despesa' }) {
+  const cor = classeComp(comp, tipo)
+  const sinal = sinalComp(comp, tipo)
   return (
-    <>
-      <tr className="bg-[#0B0F14]/60">
-        <th
-          colSpan={modoAno ? 14 : 2}
-          scope="colgroup"
-          className="py-2 px-4 text-left text-xs font-bold uppercase tracking-wider text-[#00D68F]/90"
-        >
-          {g.grupo?.nome || 'Sem grupo'}
-        </th>
-      </tr>
-      {g.linhas.map((l) => (
-        <tr key={l.plano.id} className="hover:bg-[#1A222D]/50 transition-colors">
-          <td className="py-2.5 px-4">
-            <span className="font-mono text-[11px] text-gray-500 mr-2">{l.plano.codigo}</span>
-            <span className="font-medium text-white text-sm">{l.plano.descricao}</span>
-          </td>
-          {modoAno &&
-            l.valores.map((v, m) => (
-              <td
-                key={m}
-                className={`py-2.5 px-2 text-center font-mono text-[11px] whitespace-nowrap ${
-                  v === 0 ? 'text-gray-700' : classeProj(v, l.projetado[m])
-                }`}
-              >
-                {celulaProj(v, l.projetado[m])}
-              </td>
-            ))}
-          <td className="py-2.5 px-4 text-right font-mono text-xs font-semibold text-white whitespace-nowrap">
-            {formatCurrency(modoAno ? somaPeriodo(l.valores) : l.valores[mesIdx])}
-          </td>
-        </tr>
-      ))}
-      <tr className="bg-[#1A222D]/40">
-        <td className="py-2 px-4 text-xs font-bold text-gray-300">
-          Subtotal {g.grupo?.nome || 'Sem grupo'}
-        </td>
-        {modoAno &&
-          g.subtotal.map((v, m) => (
-            <td
-              key={m}
-              className={`py-2 px-2 text-center font-mono text-[11px] ${classeProj(v, g.temProjecaoMes[m])}`}
-            >
-              {celulaProj(v, g.temProjecaoMes[m])}
-            </td>
-          ))}
-        <td className="py-2 px-4 text-right font-mono text-xs font-bold text-white whitespace-nowrap">
-          {formatCurrency(modoAno ? somaPeriodo(g.subtotal) : g.subtotal[mesIdx])}
-        </td>
-      </tr>
-    </>
+    <div className="text-[11px] mt-1">
+      <span className="text-gray-500">Orçado: </span>
+      <span className="text-gray-300 font-mono">{formatCurrency(comp.orcado)}</span>
+      {comp.orcado > 0 ? (
+        <>
+          {' · '}
+          <span className={`font-mono font-semibold ${cor}`}>
+            {sinal}
+            {formatCurrency(Math.abs(comp.variacaoR$)).replace('R$', '').trim()} (
+            {comp.percentual.toFixed(1)}%)
+          </span>
+        </>
+      ) : null}
+    </div>
   )
+}
+
+// Orçado por categoria e mês: Map plano_conta_id → 12 posições. O financeiro e
+// o período (mês/ano) são filtrados depois em montarBloco via prefixo.
+function orcadoMapa(budgets: Budget[], finId: string): Map<string, number[]> {
+  const mapa = new Map<string, number[]>()
+  for (const b of budgets) {
+    if (b.financeiro_id !== finId) continue
+    const m = Number(b.mes_ano.slice(5, 7)) - 1
+    if (!(m >= 0 && m <= 11)) continue
+    let arr = mapa.get(b.plano_conta_id)
+    if (!arr) {
+      arr = zero12()
+      mapa.set(b.plano_conta_id, arr)
+    }
+    arr[m] += Number(b.valor_orcado) || 0
+  }
+  return mapa
 }
