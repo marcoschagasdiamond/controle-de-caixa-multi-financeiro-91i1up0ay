@@ -13,9 +13,17 @@ export interface LinhaRelatorioPessoa {
   descricao: string
   tipo: 'credito' | 'debito'
   status: 'previsto' | 'realizado'
+  financeiro_id: string
   empresa: string
   conta: string
   contraparte: string
+}
+
+export interface GrupoEmpresa {
+  financeiroId: string
+  empresa: string
+  linhas: LinhaRelatorioPessoa[]
+  totais: TotaisPessoa
 }
 
 export interface TotaisPessoa {
@@ -98,6 +106,7 @@ export function montarLinhasRelatorio(
       descricao: l.descricao,
       tipo: l.tipo,
       status: l.status,
+      financeiro_id: l.financeiro_id,
       empresa: nomesEmpresa.get(l.financeiro_id) ?? '—',
       conta: nomesConta.get(l.conta_id) ?? '—',
       contraparte: l.contraparte ?? '',
@@ -125,23 +134,73 @@ export const rotuloTipo = (tipo: 'credito' | 'debito') => (tipo === 'debito' ? '
 export const rotuloStatus = (status: 'previsto' | 'realizado') =>
   status === 'realizado' ? 'Realizado' : 'Previsto'
 
+// Agrupa as linhas por empresa (financeiro), com subtotais; empresas em ordem alfabética
+export function agruparPorEmpresa(linhas: LinhaRelatorioPessoa[]): GrupoEmpresa[] {
+  const mapa = new Map<string, LinhaRelatorioPessoa[]>()
+  for (const l of linhas) {
+    const lista = mapa.get(l.financeiro_id)
+    if (lista) lista.push(l)
+    else mapa.set(l.financeiro_id, [l])
+  }
+  return Array.from(mapa.entries())
+    .map(([financeiroId, lista]) => ({
+      financeiroId,
+      empresa: lista[0].empresa,
+      linhas: lista,
+      totais: calcularTotais(lista),
+    }))
+    .sort((a, b) => a.empresa.localeCompare(b.empresa, 'pt-BR'))
+}
+
+const CABECALHO_CSV = ['Data', 'Valor (R$)', 'Descrição', 'Empresa', 'Conta', 'Tipo', 'Status']
+
+const linhaCSV = (l: LinhaRelatorioPessoa): unknown[] => [
+  formatDateBR(l.data),
+  valorCSV(l.valor),
+  l.descricao,
+  l.empresa,
+  l.conta,
+  rotuloTipo(l.tipo),
+  rotuloStatus(l.status),
+]
+
+const rodapeCSV = (totais: TotaisPessoa): unknown[][] => [
+  [],
+  ['Total pago (R$)', valorCSV(totais.totalPago)],
+  ['Total recebido (R$)', valorCSV(totais.totalRecebido)],
+  ['Quantidade de lançamentos', String(totais.quantidade)],
+]
+
 // Cabeçalho e linhas do CSV: mesmas colunas da tabela, com os totais no rodapé
 export function montarCSVRelatorio(linhas: LinhaRelatorioPessoa[], totais: TotaisPessoa) {
-  const cabecalho = ['Data', 'Valor (R$)', 'Descrição', 'Empresa', 'Conta', 'Tipo', 'Status']
-  const corpo: unknown[][] = linhas.map((l) => [
-    formatDateBR(l.data),
-    valorCSV(l.valor),
-    l.descricao,
-    l.empresa,
-    l.conta,
-    rotuloTipo(l.tipo),
-    rotuloStatus(l.status),
-  ])
-  const rodape: unknown[][] = [
-    [],
-    ['Total pago (R$)', valorCSV(totais.totalPago)],
-    ['Total recebido (R$)', valorCSV(totais.totalRecebido)],
-    ['Quantidade de lançamentos', String(totais.quantidade)],
-  ]
-  return { cabecalho, linhas: [...corpo, ...rodape] }
+  const corpo: unknown[][] = linhas.map(linhaCSV)
+  return { cabecalho: CABECALHO_CSV, linhas: [...corpo, ...rodapeCSV(totais)] }
+}
+
+// CSV da visão por empresa: cada empresa traz suas linhas seguidas de um subtotal (pago e recebido)
+export function montarCSVPorEmpresa(grupos: GrupoEmpresa[], totais: TotaisPessoa) {
+  const corpo: unknown[][] = []
+  for (const g of grupos) {
+    for (const l of g.linhas) corpo.push(linhaCSV(l))
+    corpo.push([
+      '',
+      valorCSV(g.totais.totalPago),
+      `Subtotal pago — ${g.empresa}`,
+      g.empresa,
+      '',
+      'Pago',
+      `${g.totais.quantidade} lançamento(s)`,
+    ])
+    corpo.push([
+      '',
+      valorCSV(g.totais.totalRecebido),
+      `Subtotal recebido — ${g.empresa}`,
+      g.empresa,
+      '',
+      'Recebido',
+      '',
+    ])
+    corpo.push([])
+  }
+  return { cabecalho: CABECALHO_CSV, linhas: [...corpo, ...rodapeCSV(totais)] }
 }

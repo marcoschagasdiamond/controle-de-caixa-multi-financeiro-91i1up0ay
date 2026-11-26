@@ -7,7 +7,9 @@ import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import {
   PeriodoRelatorio,
   TipoPagamento,
+  agruparPorEmpresa,
   filtrarRelatorio,
+  montarCSVPorEmpresa,
   montarCSVRelatorio,
   montarLinhasRelatorio,
   calcularTotais,
@@ -15,7 +17,8 @@ import {
   rotuloTipo,
   sugerirContrapartes,
 } from '@/lib/relatorioPessoa'
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
+import { ExtratoPorEmpresa } from '@/components/ExtratoPorEmpresa'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
@@ -43,6 +46,13 @@ const TIPOS: Array<{ id: TipoPagamento; rotulo: string }> = [
   { id: 'recebido', rotulo: 'Recebido' },
 ]
 
+type VisaoExtrato = 'detalhado' | 'empresa'
+
+const VISOES: Array<{ id: VisaoExtrato; rotulo: string }> = [
+  { id: 'detalhado', rotulo: 'Detalhado' },
+  { id: 'empresa', rotulo: 'Por Empresa' },
+]
+
 export default function RelatorioPessoaPage() {
   const { financeiros, loading: loadingAcesso } = useAcessoFinanceiros()
 
@@ -50,6 +60,7 @@ export default function RelatorioPessoaPage() {
   const [pessoa, setPessoa] = useState<string | null>(null)
   const [periodo, setPeriodo] = useState<PeriodoRelatorio>('ano')
   const [tipo, setTipo] = useState<TipoPagamento>('todos')
+  const [visao, setVisao] = useState<VisaoExtrato>('detalhado')
 
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([])
   const [contas, setContas] = useState<ContaBancaria[]>([])
@@ -103,12 +114,16 @@ export default function RelatorioPessoaPage() {
 
   const totais = useMemo(() => calcularTotais(linhas), [linhas])
 
+  const grupos = useMemo(() => agruparPorEmpresa(linhas), [linhas])
+
   const temBusca = Boolean(pessoa) || termo.trim().length > 0
 
   const exportarCSV = () => {
     const nome = (pessoa ?? termo.trim()).replace(/[^\p{L}\p{N}]+/gu, '_') || 'pessoa'
-    const { cabecalho, linhas: corpo } = montarCSVRelatorio(linhas, totais)
-    baixarCSV(`relatorio_pessoa_${nome}_${hoje}.csv`, cabecalho, corpo)
+    const { cabecalho, linhas: corpo } =
+      visao === 'empresa' ? montarCSVPorEmpresa(grupos, totais) : montarCSVRelatorio(linhas, totais)
+    const sufixo = visao === 'empresa' ? '_por_empresa' : ''
+    baixarCSV(`extrato_favorecido${sufixo}_${nome}_${hoje}.csv`, cabecalho, corpo)
   }
 
   if (loadingAcesso || loading) {
@@ -297,70 +312,97 @@ export default function RelatorioPessoaPage() {
             </Card>
           </div>
 
-          {/* Tabela */}
-          <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
-            <CardHeader className="pb-3 border-b border-[#232B36]">
-              <CardTitle className="text-base font-bold">
-                {pessoa ?? `Resultados para “${termo.trim()}”`}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableCaption className="sr-only">
-                    Lançamentos da pessoa pesquisada, de todas as empresas e contas
-                  </TableCaption>
-                  <TableHeader>
-                    <TableRow className="border-[#232B36] hover:bg-transparent">
-                      <TableHead className="text-gray-400">Data</TableHead>
-                      <TableHead className="text-right text-gray-400">Valor</TableHead>
-                      <TableHead className="text-gray-400">Descrição</TableHead>
-                      <TableHead className="text-gray-400">Empresa</TableHead>
-                      <TableHead className="text-gray-400">Conta bancária</TableHead>
-                      <TableHead className="text-gray-400">Tipo</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody className="divide-y divide-[#232B36]">
-                    {linhas.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center text-sm text-gray-500 py-8">
-                          Nenhum lançamento encontrado para esta busca e filtros.
-                        </TableCell>
+          {/* Alternador de visão */}
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h2 className="text-base font-bold text-white">
+              {pessoa ?? `Resultados para “${termo.trim()}”`}
+            </h2>
+            <div
+              role="group"
+              aria-label="Escolher visão do extrato"
+              className="flex rounded-lg border border-[#232B36] p-0.5 bg-[#141A22]"
+            >
+              {VISOES.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  aria-pressed={visao === v.id}
+                  onClick={() => setVisao(v.id)}
+                  className={`px-3 py-1 rounded text-xs font-bold transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D68F] ${
+                    visao === v.id
+                      ? 'bg-[#00D68F] text-[#0B0F14]'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  {v.rotulo}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {visao === 'empresa' ? (
+            <ExtratoPorEmpresa grupos={grupos} />
+          ) : (
+            /* Tabela */
+            <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
+              <CardContent className="p-0">
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableCaption className="sr-only">
+                      Lançamentos da pessoa pesquisada, de todas as empresas e contas
+                    </TableCaption>
+                    <TableHeader>
+                      <TableRow className="border-[#232B36] hover:bg-transparent">
+                        <TableHead className="text-gray-400">Data</TableHead>
+                        <TableHead className="text-right text-gray-400">Valor</TableHead>
+                        <TableHead className="text-gray-400">Descrição</TableHead>
+                        <TableHead className="text-gray-400">Empresa</TableHead>
+                        <TableHead className="text-gray-400">Conta bancária</TableHead>
+                        <TableHead className="text-gray-400">Tipo</TableHead>
                       </TableRow>
-                    )}
-                    {linhas.map((l) => (
-                      <TableRow key={l.id} className="border-[#232B36] hover:bg-[#1A222D]/40">
-                        <TableCell className="text-xs font-mono text-gray-300 whitespace-nowrap">
-                          {formatDateBR(l.data)}
-                        </TableCell>
-                        <TableCell
-                          className={`text-right font-mono text-xs font-semibold whitespace-nowrap ${
-                            l.tipo === 'debito' ? 'text-[#FF5C5C]' : 'text-[#00D68F]'
-                          }`}
-                        >
-                          {formatCurrency(l.valor)}
-                        </TableCell>
-                        <TableCell className="text-sm text-white">
-                          {l.descricao}
-                          {l.status === 'previsto' && (
-                            <Badge variant="outline" className="ml-2 text-[9px] py-0 px-1.5">
-                              Previsto
-                            </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-sm text-gray-300">{l.empresa}</TableCell>
-                        <TableCell className="text-sm text-gray-300">{l.conta}</TableCell>
-                        <TableCell className="text-xs text-gray-400">
-                          {rotuloTipo(l.tipo)}
-                          <span className="sr-only"> ({rotuloStatus(l.status)})</span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+                    </TableHeader>
+                    <TableBody className="divide-y divide-[#232B36]">
+                      {linhas.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-sm text-gray-500 py-8">
+                            Nenhum lançamento encontrado para esta busca e filtros.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                      {linhas.map((l) => (
+                        <TableRow key={l.id} className="border-[#232B36] hover:bg-[#1A222D]/40">
+                          <TableCell className="text-xs font-mono text-gray-300 whitespace-nowrap">
+                            {formatDateBR(l.data)}
+                          </TableCell>
+                          <TableCell
+                            className={`text-right font-mono text-xs font-semibold whitespace-nowrap ${
+                              l.tipo === 'debito' ? 'text-[#FF5C5C]' : 'text-[#00D68F]'
+                            }`}
+                          >
+                            {formatCurrency(l.valor)}
+                          </TableCell>
+                          <TableCell className="text-sm text-white">
+                            {l.descricao}
+                            {l.status === 'previsto' && (
+                              <Badge variant="outline" className="ml-2 text-[9px] py-0 px-1.5">
+                                Previsto
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-sm text-gray-300">{l.empresa}</TableCell>
+                          <TableCell className="text-sm text-gray-300">{l.conta}</TableCell>
+                          <TableCell className="text-xs text-gray-400">
+                            {rotuloTipo(l.tipo)}
+                            <span className="sr-only"> ({rotuloStatus(l.status)})</span>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>
