@@ -53,6 +53,7 @@ import { baixarCSV, valorCSV } from '@/lib/csv'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import { useAuth } from '@/hooks/use-auth'
 import { dataUltimaParcela, mesPorExtenso } from '@/lib/recorrentes'
+import CelulaEditavelLancamento from '@/components/CelulaEditavelLancamento'
 import { CalendarClock, Repeat, Pencil, X } from 'lucide-react'
 import TabelaAnualRecorrentes from '@/components/TabelaAnualRecorrentes'
 import { RecebiveisSemData } from '@/components/RecebiveisSemData'
@@ -156,6 +157,74 @@ export default function LancamentosPage() {
       r.user_id === user?.id || finsAcesso.some((f) => f.id === r.financeiro_id),
     [user, finsAcesso],
   )
+
+  // ===== EDIÇÃO INLINE NA LISTA =====
+  // A permissão é a mesma do RLS: o usuário só edita lançamentos de financeiros
+  // que acessa (master = todos; membro = os liberados). useAcessoFinanceiros já
+  // filtra a LISTA de lançamentos (getLancamentos usa o mesmo RLS), então uma
+  // linha da lista sempre pertence a um financeiro acessível; a checagem abaixo
+  // é defesa extra caso `financeiros` ainda esteja carregando.
+  const podeEditarInline = useCallback(
+    (l: Lancamento) => finsAcesso.some((f) => f.id === l.financeiro_id),
+    [finsAcesso],
+  )
+
+  // Salva UM campo do lançamento no banco e atualiza a linha na lista na hora
+  // (o retorno do update já vem com o registro persistido — sem recarregar tudo).
+  const salvarCampoInline = useCallback(
+    async (id: string, campo: keyof Lancamento, valor: string) => {
+      // 'valor' é numérico; vencimento vazio remove a data (NULL); demais = texto
+      const payload: Partial<Lancamento> =
+        campo === 'valor'
+          ? { valor: parseFloat(valor) }
+          : campo === 'data_vencimento'
+            ? { data_vencimento: valor || null }
+            : ({ [campo]: valor || null } as Partial<Lancamento>)
+      const atualizado = await FinanceiroService.updateLancamento(id, payload)
+      setLancamentos((prev) => prev.map((l) => (l.id === id ? { ...l, ...atualizado } : l)))
+      toast({
+        title: 'Lançamento atualizado',
+        description: 'Alteração salva diretamente na lista.',
+        duration: 2000,
+      })
+    },
+    [],
+  )
+
+  // Status alterna na própria lista (clique no badge): previsto <-> realizado.
+  // O RLS recusa membro sem acesso — o badge clicável só aparece com acesso.
+  const [idSalvandoStatus, setIdSalvandoStatus] = useState<string | null>(null)
+  const alternarStatus = useCallback(async (l: Lancamento) => {
+    const novoStatus = l.status === 'realizado' ? 'previsto' : 'realizado'
+    setIdSalvandoStatus(l.id)
+    try {
+      // Regra existente do sistema: marcar realizado usa a data de HOJE,
+      // sem tocar no vencimento original (mantém o histórico de atraso).
+      const payload: Partial<Lancamento> =
+        novoStatus === 'realizado' && l.data !== getTodayISODate()
+          ? { status: novoStatus, data: getTodayISODate() }
+          : { status: novoStatus }
+      const atualizado = await FinanceiroService.updateLancamento(l.id, payload)
+      setLancamentos((prev) => prev.map((x) => (x.id === l.id ? { ...x, ...atualizado } : x)))
+      toast({
+        title:
+          novoStatus === 'realizado' ? 'Recebimento/pagamento confirmado' : 'Voltou para previsto',
+        description:
+          novoStatus === 'realizado'
+            ? 'O valor entra no saldo atual do extrato.'
+            : 'O valor sai do saldo atual (não realizado).',
+        duration: 2000,
+      })
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao alternar status',
+        description: err.message,
+      })
+    } finally {
+      setIdSalvandoStatus(null)
+    }
+  }, [])
 
   // Pré-selecionar o primeiro financeiro acessível caso não haja seleção
   useEffect(() => {
@@ -1310,11 +1379,15 @@ export default function LancamentosPage() {
       <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
         <CardHeader className="pb-4 border-b border-[#232B36]">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <CardTitle className="text-lg font-bold text-white">Extrato de Lançamentos</CardTitle>
               <Badge variant="outline" className="border-[#232B36] text-gray-400 text-xs">
                 {lancamentosFiltrados.length} registros
               </Badge>
+              <span className="text-[11px] text-gray-500">
+                Clique em data, descrição, valor, vencimento ou observação para editar na hora;
+                clique no status para alternar previsto/realizado.
+              </span>
             </div>
 
             <div className="flex items-center gap-2 w-full md:w-auto">
@@ -1471,7 +1544,19 @@ export default function LancamentosPage() {
                     return (
                       <tr key={item.id} className="hover:bg-[#1A222D]/50 transition-colors">
                         <td className="py-3 px-4 whitespace-nowrap font-mono text-xs text-gray-400">
-                          {formatDateBR(item.data)}
+                          {podeEditarInline(item) ? (
+                            <CelulaEditavelLancamento
+                              rotuloLancamento={item.descricao || item.data}
+                              campo="data"
+                              nomeCampo="data"
+                              valorExibido={formatDateBR(item.data)}
+                              valorBruto={item.data}
+                              tipo="data"
+                              onSalvar={(v) => salvarCampoInline(item.id, 'data', v)}
+                            />
+                          ) : (
+                            formatDateBR(item.data)
+                          )}
                         </td>
                         <td className="py-3 px-4 whitespace-nowrap">
                           {fin ? (
@@ -1491,7 +1576,21 @@ export default function LancamentosPage() {
                           )}
                         </td>
                         <td className="py-3 px-4">
-                          <div className="font-medium text-white">{item.descricao}</div>
+                          <div className="font-medium text-white">
+                            {podeEditarInline(item) ? (
+                              <CelulaEditavelLancamento
+                                rotuloLancamento={item.descricao || item.data}
+                                campo="descricao"
+                                nomeCampo="descrição"
+                                valorExibido={item.descricao}
+                                valorBruto={item.descricao}
+                                tipo="texto"
+                                onSalvar={(v) => salvarCampoInline(item.id, 'descricao', v)}
+                              />
+                            ) : (
+                              item.descricao
+                            )}
+                          </div>
                           {item.contraparte && (
                             <div className="text-[11px] text-gray-400">
                               Favorecido: {item.contraparte}
@@ -1500,6 +1599,40 @@ export default function LancamentosPage() {
                           {item.documento && (
                             <div className="text-[11px] text-gray-500 font-mono">
                               Doc: {item.documento}
+                            </div>
+                          )}
+                          {item.data_vencimento && (
+                            <div className="text-[11px] text-amber-400/80">
+                              {podeEditarInline(item) ? (
+                                <CelulaEditavelLancamento
+                                  rotuloLancamento={item.descricao || item.data}
+                                  campo="data_vencimento"
+                                  nomeCampo="vencimento"
+                                  valorExibido={`Vence: ${formatDateBR(item.data_vencimento)}`}
+                                  valorBruto={item.data_vencimento}
+                                  tipo="data"
+                                  onSalvar={(v) => salvarCampoInline(item.id, 'data_vencimento', v)}
+                                />
+                              ) : (
+                                `Vence: ${formatDateBR(item.data_vencimento)}`
+                              )}
+                            </div>
+                          )}
+                          {item.observacao && (
+                            <div className="text-[11px] text-gray-500">
+                              {podeEditarInline(item) ? (
+                                <CelulaEditavelLancamento
+                                  rotuloLancamento={item.descricao || item.data}
+                                  campo="observacao"
+                                  nomeCampo="observação"
+                                  valorExibido={`Obs: ${item.observacao}`}
+                                  valorBruto={item.observacao}
+                                  tipo="texto"
+                                  onSalvar={(v) => salvarCampoInline(item.id, 'observacao', v)}
+                                />
+                              ) : (
+                                `Obs: ${item.observacao}`
+                              )}
                             </div>
                           )}
                         </td>
@@ -1512,14 +1645,54 @@ export default function LancamentosPage() {
                           </div>
                         </td>
                         <td className="py-3 px-4 text-center whitespace-nowrap">
-                          {item.status === 'realizado' ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#00D68F] bg-[#00D68F]/10 px-2 py-0.5 rounded-full border border-[#00D68F]/20">
-                              <CheckCircle2 className="w-3 h-3" />
+                          {podeEditarInline(item) ? (
+                            <button
+                              type="button"
+                              title="Alternar entre previsto e realizado"
+                              aria-label={`Alternar status de ${item.descricao || item.data} (atual: ${item.status})`}
+                              disabled={idSalvandoStatus === item.id}
+                              onClick={() => alternarStatus(item)}
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00D68F] disabled:opacity-60"
+                              style={
+                                item.status === 'realizado'
+                                  ? {
+                                      color: '#00D68F',
+                                      backgroundColor: '#00D68F1A',
+                                      borderColor: '#00D68F33',
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {idSalvandoStatus === item.id ? (
+                                <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
+                              ) : item.status === 'realizado' ? (
+                                <>
+                                  <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
+                                  Realizado
+                                </>
+                              ) : (
+                                <>
+                                  <Clock className="w-3 h-3" aria-hidden="true" />
+                                  Previsto
+                                </>
+                              )}
+                            </button>
+                          ) : item.status === 'realizado' ? (
+                            <span
+                              role="img"
+                              aria-label="Realizado"
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#00D68F] bg-[#00D68F]/10 px-2 py-0.5 rounded-full border border-[#00D68F]/20"
+                            >
+                              <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
                               Realizado
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20">
-                              <Clock className="w-3 h-3" />
+                            <span
+                              role="img"
+                              aria-label="Previsto"
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full border border-amber-400/20"
+                            >
+                              <Clock className="w-3 h-3" aria-hidden="true" />
                               Previsto
                             </span>
                           )}
@@ -1529,7 +1702,25 @@ export default function LancamentosPage() {
                             isCredito ? 'text-[#00D68F]' : 'text-[#FF5C5C]'
                           }`}
                         >
-                          {isCredito ? '+' : '-'} {formatCurrency(item.valor)}
+                          {podeEditarInline(item) ? (
+                            <CelulaEditavelLancamento
+                              rotuloLancamento={item.descricao || item.data}
+                              campo="valor"
+                              nomeCampo="valor"
+                              valorExibido={`${isCredito ? '+' : '-'} ${formatCurrency(item.valor)}`}
+                              valorBruto={String(item.valor)}
+                              tipo="valor"
+                              className={cn(
+                                'text-right',
+                                isCredito ? 'text-[#00D68F]' : 'text-[#FF5C5C]',
+                              )}
+                              onSalvar={(v) => salvarCampoInline(item.id, 'valor', v)}
+                            />
+                          ) : (
+                            <>
+                              {isCredito ? '+' : '-'} {formatCurrency(item.valor)}
+                            </>
+                          )}
                         </td>
                         <td className="py-3 px-4 text-center whitespace-nowrap">
                           <button
