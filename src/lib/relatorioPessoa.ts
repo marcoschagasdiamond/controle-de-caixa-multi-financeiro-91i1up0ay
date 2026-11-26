@@ -67,9 +67,10 @@ export interface FiltrosRelatorio {
   periodo: PeriodoRelatorio
   tipo: TipoPagamento
   hoje: string // YYYY-MM-DD
+  financeiroId?: string | null // empresa (financeiro) escolhida no filtro; null = todas
 }
 
-// Aplica busca por pessoa, período e tipo sobre TODOS os lançamentos recebidos
+// Aplica busca por pessoa, empresa, período e tipo sobre TODOS os lançamentos recebidos
 export function filtrarRelatorio(lancamentos: Lancamento[], f: FiltrosRelatorio): Lancamento[] {
   const termo = normalizarTexto(f.termo)
   if (!f.pessoa && !termo) return []
@@ -82,6 +83,8 @@ export function filtrarRelatorio(lancamentos: Lancamento[], f: FiltrosRelatorio)
     } else if (!contra.includes(termo)) {
       return false
     }
+
+    if (f.financeiroId && l.financeiro_id !== f.financeiroId) return false
 
     if (f.periodo === 'mes' && l.data.slice(0, 7) !== f.hoje.slice(0, 7)) return false
     if (f.periodo === 'ano' && l.data.slice(0, 4) !== f.hoje.slice(0, 4)) return false

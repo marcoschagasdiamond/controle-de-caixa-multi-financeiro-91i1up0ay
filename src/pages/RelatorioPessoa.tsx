@@ -32,7 +32,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { Calendar, Download, RefreshCw, Search, Users, X } from 'lucide-react'
+import { Building2, Calendar, Download, RefreshCw, Search, Users, X } from 'lucide-react'
 
 const PERIODOS: Array<{ id: PeriodoRelatorio; rotulo: string }> = [
   { id: 'mes', rotulo: 'Mês atual' },
@@ -60,6 +60,7 @@ export default function RelatorioPessoaPage() {
   const [pessoa, setPessoa] = useState<string | null>(null)
   const [periodo, setPeriodo] = useState<PeriodoRelatorio>('ano')
   const [tipo, setTipo] = useState<TipoPagamento>('todos')
+  const [financeiroId, setFinanceiroId] = useState<string | null>(null)
   const [visao, setVisao] = useState<VisaoExtrato>('detalhado')
 
   const [lancamentos, setLancamentos] = useState<Lancamento[]>([])
@@ -108,15 +109,44 @@ export default function RelatorioPessoaPage() {
   )
 
   const linhas = useMemo(() => {
-    const filtrados = filtrarRelatorio(lancamentos, { termo, pessoa, periodo, tipo, hoje })
+    const filtrados = filtrarRelatorio(lancamentos, {
+      termo,
+      pessoa,
+      periodo,
+      tipo,
+      hoje,
+      financeiroId,
+    })
     return montarLinhasRelatorio(filtrados, nomesEmpresa, nomesConta)
-  }, [lancamentos, termo, pessoa, periodo, tipo, hoje, nomesEmpresa, nomesConta])
+  }, [lancamentos, termo, pessoa, periodo, tipo, hoje, financeiroId, nomesEmpresa, nomesConta])
 
   const totais = useMemo(() => calcularTotais(linhas), [linhas])
 
   const grupos = useMemo(() => agruparPorEmpresa(linhas), [linhas])
 
   const temBusca = Boolean(pessoa) || termo.trim().length > 0
+
+  // Empresas presentes no resultado da busca (sem aplicar o filtro de empresa),
+  // para as opções do select não encolherem depois de escolher uma delas
+  const opcoesEmpresa = useMemo(() => {
+    const base = filtrarRelatorio(lancamentos, { termo, pessoa, periodo, tipo, hoje })
+    const empresas = new Map<string, string>()
+    for (const l of base) {
+      if (!empresas.has(l.financeiro_id)) {
+        empresas.set(l.financeiro_id, nomesEmpresa.get(l.financeiro_id) ?? '—')
+      }
+    }
+    return Array.from(empresas, ([id, nome]) => ({ id, nome })).sort((a, b) =>
+      a.nome.localeCompare(b.nome, 'pt-BR'),
+    )
+  }, [lancamentos, termo, pessoa, periodo, tipo, hoje, nomesEmpresa])
+
+  // Se a empresa selecionada sair das opções (busca limpa/trocada), volta para "Todas"
+  useEffect(() => {
+    if (financeiroId && !opcoesEmpresa.some((o) => o.id === financeiroId)) {
+      setFinanceiroId(null)
+    }
+  }, [financeiroId, opcoesEmpresa])
 
   const exportarCSV = () => {
     const nome = (pessoa ?? termo.trim()).replace(/[^\p{L}\p{N}]+/gu, '_') || 'pessoa'
@@ -216,8 +246,25 @@ export default function RelatorioPessoaPage() {
             )}
           </div>
 
-          {/* Filtros de período e tipo + exportação */}
+          {/* Filtro de empresa + filtros de período e tipo + exportação */}
           <div className="flex flex-wrap items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-[#00D68F]" />
+              <select
+                aria-label="Filtrar por empresa"
+                value={financeiroId ?? ''}
+                onChange={(e) => setFinanceiroId(e.target.value || null)}
+                className="h-9 px-3 rounded-md bg-[#141A22] border border-[#232B36] text-white text-xs font-semibold"
+              >
+                <option value="">Todas as empresas</option>
+                {opcoesEmpresa.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-[#00D68F]" />
               <select
@@ -349,7 +396,7 @@ export default function RelatorioPessoaPage() {
                 <div className="overflow-x-auto">
                   <Table>
                     <TableCaption className="sr-only">
-                      Lançamentos da pessoa pesquisada, de todas as empresas e contas
+                      Lançamentos da pessoa pesquisada, conforme empresa e filtros selecionados
                     </TableCaption>
                     <TableHeader>
                       <TableRow className="border-[#232B36] hover:bg-transparent">
