@@ -34,6 +34,10 @@ interface Props {
   recorrentes: LancamentoRecorrente[]
   lancamentos: Lancamento[]
   financeiros: Financeiro[]
+  // Passo 1 da página de Lançamentos: quando um financeiro está selecionado,
+  // a projeção mostra SOMENTE os recorrentes/lançamentos dele; quando vazio
+  // (modo "todas as empresas"), mantém o comportamento anterior.
+  financeiroIdFiltro?: string | null
   podeGerenciar: (r: LancamentoRecorrente) => boolean
   onEditar: (r: LancamentoRecorrente) => void
   onExcluir: (r: LancamentoRecorrente) => void
@@ -43,15 +47,52 @@ export default function TabelaAnualRecorrentes({
   recorrentes,
   lancamentos,
   financeiros,
+  financeiroIdFiltro,
   podeGerenciar,
   onEditar,
   onExcluir,
 }: Props) {
-  const ano = useMemo(() => new Date().getFullYear(), [])
+  const anoBase = useMemo(() => new Date().getFullYear(), [])
+
+  // Segregação patrimonial da projeção: filtra pelo financeiro selecionado.
+  const recorrentesVisiveis = useMemo(
+    () =>
+      financeiroIdFiltro
+        ? recorrentes.filter((r) => r.financeiro_id === financeiroIdFiltro)
+        : recorrentes,
+    [recorrentes, financeiroIdFiltro],
+  )
+  const lancamentosVisiveis = useMemo(
+    () =>
+      financeiroIdFiltro
+        ? lancamentos.filter((l) => l.financeiro_id === financeiroIdFiltro)
+        : lancamentos,
+    [lancamentos, financeiroIdFiltro],
+  )
+
+  // Mesma amostragem das células da tabela (dia 15 de cada mês): diz se o
+  // recorrente aparece em algum mês do ano dado.
+  const ocorreEmAlgumMesDoAno = (r: LancamentoRecorrente, ano: number) =>
+    Array.from({ length: 12 }, (_, m) => `${ano}-${String(m + 1).padStart(2, '0')}-15`).some(
+      (dataISO) => recorrenteOcorreEm(dataISO, r.dia_mes, r.data_inicial, r.total_parcelas),
+    )
+
+  // Ano do título: o ano corrente, exceto quando os recorrentes visíveis ainda
+  // não têm ocorrência nele (ex.: só começam em 2027) — nesse caso usa o
+  // primeiro ano futuro com ocorrência, para o título acompanhar o conteúdo.
+  const ano = useMemo(() => {
+    const ativos = recorrentesVisiveis.filter((r) => r.ativo)
+    if (ativos.some((r) => ocorreEmAlgumMesDoAno(r, anoBase))) return anoBase
+    for (let a = anoBase + 1; a <= anoBase + 10; a++) {
+      if (ativos.some((r) => ocorreEmAlgumMesDoAno(r, a))) return a
+    }
+    return anoBase
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorrentesVisiveis, anoBase])
 
   // Linhas de recorrentes/parcelados: valor previsto em cada um dos 12 meses.
   const linhasRecorrentes = useMemo(() => {
-    return recorrentes
+    return recorrentesVisiveis
       .filter((r) => r.ativo)
       .map((r) => {
         const fin = financeiros.find((f) => f.id === r.financeiro_id)
@@ -68,11 +109,11 @@ export default function TabelaAnualRecorrentes({
         return { id: `r-${r.id}`, desc: rotulo, fin: fin ? fin.nome : '—', tipo: r.tipo, valores }
       })
       .sort((a, b) => a.desc.localeCompare(b.desc))
-  }, [recorrentes, financeiros, ano])
+  }, [recorrentesVisiveis, financeiros, ano])
 
   // Linhas de lançamentos avulsos do ano (dão contexto; a regra do recorrente é separada).
   const linhasAvulsos = useMemo(() => {
-    return lancamentos
+    return lancamentosVisiveis
       .filter((l) => l.data.startsWith(String(ano)))
       .map((l) => {
         const fin = financeiros.find((f) => f.id === l.financeiro_id)
@@ -102,7 +143,7 @@ export default function TabelaAnualRecorrentes({
     const mapa = new Map<string, LancamentoRecorrente>()
     recorrentes.forEach((r) => mapa.set(`r-${r.id}`, r))
     return mapa
-  }, [recorrentes])
+  }, [recorrentesVisiveis])
 
   const totaisMes = useMemo(() => {
     const despesas = Array.from({ length: 12 }, () => 0)
@@ -119,6 +160,9 @@ export default function TabelaAnualRecorrentes({
   const totalAnoDespesas = totaisMes.despesas.reduce((a, b) => a + b, 0)
   const totalAnoReceitas = totaisMes.receitas.reduce((a, b) => a + b, 0)
 
+  // Nome do financeiro do Passo 1, para a mensagem de estado vazio
+  const nomeFinFiltro = financeiros.find((f) => f.id === financeiroIdFiltro)?.nome
+
   if (linhasRecorrentes.length === 0) {
     return (
       <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
@@ -129,9 +173,22 @@ export default function TabelaAnualRecorrentes({
           </CardTitle>
         </CardHeader>
         <CardContent className="py-10 text-center text-sm text-gray-500">
-          Nenhum lançamento recorrente ou parcelado ativo para o ano de {ano}.
-          <br />
-          Crie um com “Mensal contínua” ou “Parcelado em N parcelas” no formulário acima.
+          {financeiroIdFiltro ? (
+            <>
+              Nenhum lançamento recorrente ou parcelado ativo para{' '}
+              <span className="font-semibold text-gray-300">{nomeFinFiltro || 'esta empresa'}</span>{' '}
+              em {ano}.
+              <br />
+              Selecione outro financeiro no Passo 1 ou crie um recorrente com “Mensal contínua” ou
+              “Parcelado em N parcelas” no formulário acima.
+            </>
+          ) : (
+            <>
+              Nenhum lançamento recorrente ou parcelado ativo para o ano de {ano}.
+              <br />
+              Crie um com “Mensal contínua” ou “Parcelado em N parcelas” no formulário acima.
+            </>
+          )}
         </CardContent>
       </Card>
     )

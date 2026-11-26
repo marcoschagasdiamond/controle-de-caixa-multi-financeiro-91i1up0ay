@@ -1427,11 +1427,14 @@ export default function LancamentosPage() {
         </CardContent>
       </Card>
 
-      {/* TABELA ANUAL: recorrentes e parcelados, jan–dez do ano corrente */}
+      {/* TABELA ANUAL: recorrentes e parcelados, jan–dez do ano corrente.
+          Segue a segregação patrimonial do Passo 1: com um financeiro selecionado,
+          mostra só os recorrentes dele; sem seleção, mostra todas as empresas. */}
       <TabelaAnualRecorrentes
         recorrentes={recorrentes}
         lancamentos={lancamentos}
         financeiros={financeiros}
+        financeiroIdFiltro={selectedFinId || null}
         podeGerenciar={podeGerenciarRecorrente}
         onEditar={iniciarEdicaoRecorrente}
         onExcluir={(r) => setRecorrenteParaExcluir(r)}
