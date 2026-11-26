@@ -46,6 +46,7 @@ import RelatorioContas from '@/components/RelatorioContas'
 import AbaEquipe from '@/components/AbaEquipe'
 import ArvorePlanoContas from '@/components/ArvorePlanoContas'
 import FormularioGrupo, { ModoGrupo } from '@/components/FormularioGrupo'
+import FormularioCategoria, { ModoCategoria } from '@/components/FormularioCategoria'
 
 // Chaves de persistência dos filtros no navegador
 const LS_FILTRO_CONTA_FIN = 'ccmf_filtro_conta_financeiro'
@@ -107,18 +108,14 @@ export default function ConfiguracoesPage() {
   const [editingContaId, setEditingContaId] = useState<string | null>(null)
 
   // 3. Plano de Contas
-  const [planoCodigo, setPlanoCodigo] = useState('')
-  const [planoDesc, setPlanoDesc] = useState('')
-  const [planoTipo, setPlanoTipo] = useState<'receita' | 'despesa'>('despesa')
-  const [savingPlano, setSavingPlano] = useState(false)
-  const [editingPlanoId, setEditingPlanoId] = useState<string | null>(null)
   const [duplicandoPlanoId, setDuplicandoPlanoId] = useState<string | null>(null)
   // ===== Hierarquia REAL do plano de contas (grupos_plano_contas) =====
   const [grupos, setGrupos] = useState<PlanoGrupo[]>([])
   const [abertos, setAbertos] = useState<Set<string>>(new Set())
   const [modoGrupo, setModoGrupo] = useState<ModoGrupo>(null)
   const [movendoPlanoId, setMovendoPlanoId] = useState<string | null>(null)
-  const [planoGrupoId, setPlanoGrupoId] = useState('')
+  // Janela de criar/editar categoria (dialog garante visibilidade imediata)
+  const [modoCategoria, setModoCategoria] = useState<ModoCategoria>(null)
   // Busca por código ou descrição na listagem do plano
   const [planoBusca, setPlanoBusca] = useState('')
   // Total lançado por categoria (somente realizados) e período selecionado
@@ -391,73 +388,8 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  const limparFormPlano = () => {
-    setEditingPlanoId(null)
-    setPlanoCodigo('')
-    setPlanoDesc('')
-    setPlanoTipo('despesa')
-    setPlanoGrupoId('')
-  }
-
   const iniciarEdicaoPlano = (p: PlanoConta) => {
-    setEditingPlanoId(p.id)
-    setPlanoCodigo(p.codigo)
-    setPlanoDesc(p.descricao)
-    setPlanoTipo(p.tipo)
-    setPlanoGrupoId(p.grupo_id || '')
-  }
-
-  const handleSalvarPlano = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!planoCodigo.trim() || !planoDesc.trim()) return
-    const grupoSelecionado = grupos.find((g) => g.id === planoGrupoId)
-    if (!grupoSelecionado) {
-      toast({
-        variant: 'destructive',
-        title: 'Selecione um grupo',
-        description: 'Toda categoria pertence a um grupo do mesmo tipo.',
-      })
-      return
-    }
-    if (grupoSelecionado.tipo !== planoTipo) {
-      toast({
-        variant: 'destructive',
-        title: 'Grupo de outro tipo',
-        description: `A categoria é de ${planoTipo} e o grupo escolhido é de ${grupoSelecionado.tipo}.`,
-      })
-      return
-    }
-    try {
-      setSavingPlano(true)
-      if (editingPlanoId) {
-        await FinanceiroService.updatePlanoConta(editingPlanoId, {
-          codigo: planoCodigo.trim(),
-          descricao: planoDesc.trim(),
-          tipo: planoTipo,
-          grupo_id: planoGrupoId,
-        })
-        toast({ title: 'Categoria atualizada com sucesso!' })
-      } else {
-        await FinanceiroService.createPlanoConta({
-          codigo: planoCodigo.trim(),
-          descricao: planoDesc.trim(),
-          tipo: planoTipo,
-          grupo_id: planoGrupoId,
-          ativo: true,
-        })
-        toast({ title: 'Categoria adicionada ao Plano de Contas Global!' })
-      }
-      limparFormPlano()
-      await carregarTudo()
-    } catch (err: any) {
-      toast({
-        variant: 'destructive',
-        title: editingPlanoId ? 'Erro ao atualizar categoria' : 'Erro ao criar categoria',
-        description: err.message,
-      })
-    } finally {
-      setSavingPlano(false)
-    }
+    setModoCategoria({ modo: 'editar', categoria: p })
   }
 
   const handleExcluirPlano = async (id: string) => {
@@ -1161,95 +1093,6 @@ export default function ConfiguracoesPage() {
 
         {/* TAB 3: PLANO DE CONTAS */}
         <TabsContent value="plano" className="space-y-6 mt-4">
-          <Card className="bg-[#141A22] border-[#232B36] text-white">
-            <CardHeader className="pb-3 border-b border-[#232B36]">
-              <CardTitle className="text-base text-white flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-[#00D68F]" />
-                {editingPlanoId
-                  ? 'Editar Categoria do Plano de Contas'
-                  : 'Nova Categoria no Plano de Contas'}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-4">
-              <form onSubmit={handleSalvarPlano} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <div>
-                    <Label className="text-xs text-gray-400">Código Contábil</Label>
-                    <Input
-                      required
-                      value={planoCodigo}
-                      onChange={(e) => setPlanoCodigo(e.target.value)}
-                      placeholder="Ex: 2.05"
-                      className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1 font-mono"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs text-gray-400">Descrição da Categoria *</Label>
-                    <Input
-                      required
-                      value={planoDesc}
-                      onChange={(e) => setPlanoDesc(e.target.value)}
-                      placeholder="Ex: Marketing Digital"
-                      className="bg-[#0B0F14] border-[#232B36] text-white h-9 mt-1"
-                    />
-                  </div>
-
-                  <div>
-                    <Label className="text-xs text-gray-400">Tipo</Label>
-                    <select
-                      value={planoTipo}
-                      onChange={(e) => setPlanoTipo(e.target.value as any)}
-                      className="w-full h-9 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1"
-                    >
-                      <option value="despesa">Despesa</option>
-                      <option value="receita">Receita</option>
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-3">
-                    <Label className="text-xs text-gray-400">Grupo do Plano de Contas *</Label>
-                    <select
-                      required
-                      value={planoGrupoId}
-                      onChange={(e) => setPlanoGrupoId(e.target.value)}
-                      className="w-full h-9 px-2 rounded bg-[#0B0F14] border border-[#232B36] text-white text-xs mt-1 cursor-pointer"
-                    >
-                      <option value="">Selecione um grupo...</option>
-                      {grupos
-                        .filter((g) => g.tipo === (planoTipo as string))
-                        .map((g) => (
-                          <option key={g.id} value={g.id}>
-                            {g.nome}
-                          </option>
-                        ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2">
-                  {editingPlanoId && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={limparFormPlano}
-                      className="border-[#232B36] text-gray-300 hover:text-white text-xs h-9 cursor-pointer"
-                    >
-                      Cancelar edição
-                    </Button>
-                  )}
-                  <Button
-                    type="submit"
-                    disabled={savingPlano}
-                    className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold text-xs h-9 cursor-pointer"
-                  >
-                    {editingPlanoId ? 'Atualizar Categoria' : 'Salvar Categoria'}
-                  </Button>
-                </div>
-              </form>
-            </CardContent>
-          </Card>
-
           {/* Listagem com busca, período e totais */}
           <div className="bg-[#141A22] border border-[#232B36] rounded-xl">
             {/* Busca + seletor de período dos totais */}
@@ -1266,9 +1109,18 @@ export default function ConfiguracoesPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Button
-                  onClick={() => setModoGrupo({ modo: 'criar' })}
+                  onClick={() => setModoCategoria({ modo: 'criar' })}
                   size="sm"
                   className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold text-xs h-8 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  Nova Categoria
+                </Button>
+                <Button
+                  onClick={() => setModoGrupo({ modo: 'criar' })}
+                  size="sm"
+                  variant="outline"
+                  className="border-[#232B36] text-gray-300 hover:text-white text-xs h-8 cursor-pointer"
                 >
                   <FolderPlus className="w-3.5 h-3.5 mr-1" />
                   Novo Grupo
@@ -1314,6 +1166,19 @@ export default function ConfiguracoesPage() {
             onSalvo={async () => {
               setModoGrupo(null)
               await carregarTudo()
+            }}
+          />
+
+          <FormularioCategoria
+            modo={modoCategoria}
+            grupos={grupos}
+            onFechar={() => setModoCategoria(null)}
+            onSalvo={async () => {
+              setModoCategoria(null)
+              await carregarTudo()
+              await FinanceiroService.getTotaisPorCategoria(periodoTotais).then(
+                setTotaisPorCategoria,
+              )
             }}
           />
         </TabsContent>

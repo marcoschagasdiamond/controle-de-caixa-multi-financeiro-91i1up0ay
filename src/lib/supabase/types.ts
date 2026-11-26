@@ -1,17 +1,11 @@
 // AVOID UPDATING THIS FILE DIRECTLY. It is automatically generated.
-export type Json =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: Json | undefined }
-  | Json[]
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[]
 
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.18"
+    PostgrestVersion: '14.18'
   }
   public: {
     Tables: {
@@ -48,25 +42,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "budgets_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'budgets_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "budgets_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'budgets_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
           {
-            foreignKeyName: "budgets_plano_conta_id_fkey"
-            columns: ["plano_conta_id"]
+            foreignKeyName: 'budgets_plano_conta_id_fkey'
+            columns: ['plano_conta_id']
             isOneToOne: false
-            referencedRelation: "plano_contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'plano_contas'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -115,18 +109,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "contas_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'contas_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "contas_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'contas_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
         ]
       }
@@ -172,32 +166,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "contas_fixas_conta_id_fkey"
-            columns: ["conta_id"]
+            foreignKeyName: 'contas_fixas_conta_id_fkey'
+            columns: ['conta_id']
             isOneToOne: false
-            referencedRelation: "contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'contas'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "contas_fixas_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'contas_fixas_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "contas_fixas_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'contas_fixas_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
           {
-            foreignKeyName: "contas_fixas_plano_conta_id_fkey"
-            columns: ["plano_conta_id"]
+            foreignKeyName: 'contas_fixas_plano_conta_id_fkey'
+            columns: ['plano_conta_id']
             isOneToOne: false
-            referencedRelation: "plano_contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'plano_contas'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -234,18 +228,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "equipe_membros_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'equipe_membros_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "equipe_membros_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'equipe_membros_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
         ]
       }
@@ -297,39 +291,39 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "extrato_itens_conta_id_fkey"
-            columns: ["conta_id"]
+            foreignKeyName: 'extrato_itens_conta_id_fkey'
+            columns: ['conta_id']
             isOneToOne: false
-            referencedRelation: "contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'contas'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "extrato_itens_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'extrato_itens_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "extrato_itens_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'extrato_itens_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
           {
-            foreignKeyName: "extrato_itens_importacao_id_fkey"
-            columns: ["importacao_id"]
+            foreignKeyName: 'extrato_itens_importacao_id_fkey'
+            columns: ['importacao_id']
             isOneToOne: false
-            referencedRelation: "importacoes"
-            referencedColumns: ["id"]
+            referencedRelation: 'importacoes'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "extrato_itens_lancamento_id_fkey"
-            columns: ["lancamento_id"]
+            foreignKeyName: 'extrato_itens_lancamento_id_fkey'
+            columns: ['lancamento_id']
             isOneToOne: false
-            referencedRelation: "lancamentos"
-            referencedColumns: ["id"]
+            referencedRelation: 'lancamentos'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -429,25 +423,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "importacoes_conta_id_fkey"
-            columns: ["conta_id"]
+            foreignKeyName: 'importacoes_conta_id_fkey'
+            columns: ['conta_id']
             isOneToOne: false
-            referencedRelation: "contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'contas'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "importacoes_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'importacoes_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "importacoes_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'importacoes_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
         ]
       }
@@ -511,32 +505,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "lancamentos_conta_id_fkey"
-            columns: ["conta_id"]
+            foreignKeyName: 'lancamentos_conta_id_fkey'
+            columns: ['conta_id']
             isOneToOne: false
-            referencedRelation: "contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'contas'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "lancamentos_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'lancamentos_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "lancamentos_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'lancamentos_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
           {
-            foreignKeyName: "lancamentos_plano_conta_id_fkey"
-            columns: ["plano_conta_id"]
+            foreignKeyName: 'lancamentos_plano_conta_id_fkey'
+            columns: ['plano_conta_id']
             isOneToOne: false
-            referencedRelation: "plano_contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'plano_contas'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -594,32 +588,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "lancamentos_recorrentes_conta_id_fkey"
-            columns: ["conta_id"]
+            foreignKeyName: 'lancamentos_recorrentes_conta_id_fkey'
+            columns: ['conta_id']
             isOneToOne: false
-            referencedRelation: "contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'contas'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "lancamentos_recorrentes_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'lancamentos_recorrentes_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "lancamentos_recorrentes_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'lancamentos_recorrentes_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
           {
-            foreignKeyName: "lancamentos_recorrentes_plano_conta_id_fkey"
-            columns: ["plano_conta_id"]
+            foreignKeyName: 'lancamentos_recorrentes_plano_conta_id_fkey'
+            columns: ['plano_conta_id']
             isOneToOne: false
-            referencedRelation: "plano_contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'plano_contas'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -677,46 +671,46 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "mutuos_destino_conta_id_fkey"
-            columns: ["destino_conta_id"]
+            foreignKeyName: 'mutuos_destino_conta_id_fkey'
+            columns: ['destino_conta_id']
             isOneToOne: false
-            referencedRelation: "contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'contas'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "mutuos_destino_financeiro_id_fkey"
-            columns: ["destino_financeiro_id"]
+            foreignKeyName: 'mutuos_destino_financeiro_id_fkey'
+            columns: ['destino_financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "mutuos_destino_financeiro_id_fkey"
-            columns: ["destino_financeiro_id"]
+            foreignKeyName: 'mutuos_destino_financeiro_id_fkey'
+            columns: ['destino_financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
           {
-            foreignKeyName: "mutuos_origem_conta_id_fkey"
-            columns: ["origem_conta_id"]
+            foreignKeyName: 'mutuos_origem_conta_id_fkey'
+            columns: ['origem_conta_id']
             isOneToOne: false
-            referencedRelation: "contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'contas'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "mutuos_origem_financeiro_id_fkey"
-            columns: ["origem_financeiro_id"]
+            foreignKeyName: 'mutuos_origem_financeiro_id_fkey'
+            columns: ['origem_financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "mutuos_origem_financeiro_id_fkey"
-            columns: ["origem_financeiro_id"]
+            foreignKeyName: 'mutuos_origem_financeiro_id_fkey'
+            columns: ['origem_financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
         ]
       }
@@ -726,6 +720,7 @@ export type Database = {
           codigo: string
           created_at: string
           descricao: string
+          descricao_complementar: string | null
           financeiro_id: string | null
           grupo_id: string
           id: string
@@ -737,6 +732,7 @@ export type Database = {
           codigo: string
           created_at?: string
           descricao: string
+          descricao_complementar?: string | null
           financeiro_id?: string | null
           grupo_id: string
           id?: string
@@ -748,6 +744,7 @@ export type Database = {
           codigo?: string
           created_at?: string
           descricao?: string
+          descricao_complementar?: string | null
           financeiro_id?: string | null
           grupo_id?: string
           id?: string
@@ -756,25 +753,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "plano_contas_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'plano_contas_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "plano_contas_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'plano_contas_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
           {
-            foreignKeyName: "plano_contas_grupo_id_fkey"
-            columns: ["grupo_id"]
+            foreignKeyName: 'plano_contas_grupo_id_fkey'
+            columns: ['grupo_id']
             isOneToOne: false
-            referencedRelation: "grupos_plano_contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'grupos_plano_contas'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -832,32 +829,32 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "recebiveis_sem_data_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'recebiveis_sem_data_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "recebiveis_sem_data_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'recebiveis_sem_data_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
           {
-            foreignKeyName: "recebiveis_sem_data_lancamento_id_fkey"
-            columns: ["lancamento_id"]
+            foreignKeyName: 'recebiveis_sem_data_lancamento_id_fkey'
+            columns: ['lancamento_id']
             isOneToOne: false
-            referencedRelation: "lancamentos"
-            referencedColumns: ["id"]
+            referencedRelation: 'lancamentos'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "recebiveis_sem_data_plano_conta_id_fkey"
-            columns: ["plano_conta_id"]
+            foreignKeyName: 'recebiveis_sem_data_plano_conta_id_fkey'
+            columns: ['plano_conta_id']
             isOneToOne: false
-            referencedRelation: "plano_contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'plano_contas'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -891,25 +888,25 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "regras_conciliacao_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'regras_conciliacao_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "financeiros"
-            referencedColumns: ["id"]
+            referencedRelation: 'financeiros'
+            referencedColumns: ['id']
           },
           {
-            foreignKeyName: "regras_conciliacao_financeiro_id_fkey"
-            columns: ["financeiro_id"]
+            foreignKeyName: 'regras_conciliacao_financeiro_id_fkey'
+            columns: ['financeiro_id']
             isOneToOne: false
-            referencedRelation: "vw_fechamento_financeiro"
-            referencedColumns: ["financeiro_id"]
+            referencedRelation: 'vw_fechamento_financeiro'
+            referencedColumns: ['financeiro_id']
           },
           {
-            foreignKeyName: "regras_conciliacao_plano_conta_id_fkey"
-            columns: ["plano_conta_id"]
+            foreignKeyName: 'regras_conciliacao_plano_conta_id_fkey'
+            columns: ['plano_conta_id']
             isOneToOne: false
-            referencedRelation: "plano_contas"
-            referencedColumns: ["id"]
+            referencedRelation: 'plano_contas'
+            referencedColumns: ['id']
           },
         ]
       }
@@ -965,33 +962,31 @@ export type Database = {
   }
 }
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never) = never,
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
       Row: infer R
     }
     ? R
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+    ? (DefaultSchema['Tables'] & DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
         Row: infer R
       }
       ? R
@@ -1000,23 +995,23 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
+    | keyof DefaultSchema['Tables']
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
       Insert: infer I
     }
     ? I
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
+    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
         Insert: infer I
       }
       ? I
@@ -1025,23 +1020,23 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
+    | keyof DefaultSchema['Tables']
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends (DefaultSchemaTableNameOrOptions extends {
+  TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never) = never,
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+    : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
       Update: infer U
     }
     ? U
     : never
-  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
+    ? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
         Update: infer U
       }
       ? U
@@ -1050,36 +1045,36 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
+    | keyof DefaultSchema['Enums']
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never) = never,
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
+    : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
+    ? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
     : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
+    | keyof DefaultSchema['CompositeTypes']
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never) = never,
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
+    : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
+    ? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
     : never
 
 export const Constants = {
@@ -1087,4 +1082,3 @@ export const Constants = {
     Enums: {},
   },
 } as const
-

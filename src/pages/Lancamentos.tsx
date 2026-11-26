@@ -1014,7 +1014,9 @@ export default function LancamentosPage() {
                           {planosDoFinanceiro.map((p) => (
                             <CommandItem
                               key={p.id}
-                              value={`${p.codigo} - ${p.descricao}`}
+                              value={`${p.codigo} - ${p.descricao}${
+                                p.descricao_complementar ? ` - ${p.descricao_complementar}` : ''
+                              }`}
                               onSelect={() => {
                                 setSelectedPlanoId(p.id)
                                 setComboCategoriaAberto(false)
@@ -1028,7 +1030,14 @@ export default function LancamentosPage() {
                                 )}
                               />
                               <span className="font-mono text-xs text-gray-400">{p.codigo}</span>
-                              <span className="truncate">— {p.descricao}</span>
+                              <span className="truncate">
+                                — {p.descricao}
+                                {p.descricao_complementar && (
+                                  <span className="block text-[11px] text-gray-500 leading-snug">
+                                    {p.descricao_complementar}
+                                  </span>
+                                )}
+                              </span>
                             </CommandItem>
                           ))}
                         </CommandGroup>

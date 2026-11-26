@@ -31,6 +31,7 @@ export interface PlanoConta {
   user_id: string
   codigo: string
   descricao: string
+  descricao_complementar?: string | null
   tipo: 'receita' | 'despesa'
   ativo: boolean
   grupo_id?: string | null

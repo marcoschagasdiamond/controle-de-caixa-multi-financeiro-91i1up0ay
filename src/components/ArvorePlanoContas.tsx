@@ -116,7 +116,14 @@ export default function ArvorePlanoContas({
     return (
       <tr key={p.id} className="hover:bg-[#1A222D]/40">
         <td className="py-2 px-4 pl-10 font-mono text-xs text-gray-400">{p.codigo}</td>
-        <td className="py-2 px-4 text-white text-sm">{p.descricao}</td>
+        <td className="py-2 px-4 text-white text-sm">
+          {p.descricao}
+          {p.descricao_complementar && (
+            <span className="block text-[11px] text-gray-500 leading-snug max-w-md">
+              {p.descricao_complementar}
+            </span>
+          )}
+        </td>
         <td className="py-2 px-4">
           <Badge
             variant="outline"
