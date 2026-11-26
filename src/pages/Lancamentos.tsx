@@ -569,6 +569,36 @@ export default function LancamentosPage() {
     filtroBusca,
   ])
 
+  // Linhas de SALDO INICIAL no topo do extrato: uma por conta do financeiro
+  // selecionado (respeitando o filtro de conta, se ativo). Apenas exibição.
+  const contasParaLinhasSaldo = useMemo(
+    () => contasDoFinanceiro.filter((c) => filtroConta === 'todas' || c.id === filtroConta),
+    [contasDoFinanceiro, filtroConta],
+  )
+
+  const saldoInicialTotal = useMemo(
+    () => contasParaLinhasSaldo.reduce((s, c) => s + Number(c.saldo_inicial), 0),
+    [contasParaLinhasSaldo],
+  )
+
+  // Totais do extrato: apenas lançamentos REALIZADOS entram (previsto não altera o
+  // saldo — mesma regra do card do Passo 1 e do Painel). O saldo inicial entra nos
+  // créditos para a conta fechar: inicial + créditos − débitos = saldo atual.
+  const totaisExtrato = useMemo(() => {
+    let creditos = 0
+    let debitos = 0
+    for (const l of lancamentosFiltrados) {
+      if (l.status !== 'realizado') continue
+      if (l.tipo === 'credito') creditos += Number(l.valor)
+      else debitos += Number(l.valor)
+    }
+    return {
+      creditos: saldoInicialTotal + creditos,
+      debitos,
+      saldoAtual: saldoInicialTotal + creditos - debitos,
+    }
+  }, [lancamentosFiltrados, saldoInicialTotal])
+
   // Exporta exatamente a listagem filtrada atual em CSV (formato BR)
   const handleExportarCSV = () => {
     if (lancamentosFiltrados.length === 0) {
@@ -1315,6 +1345,38 @@ export default function LancamentosPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#232B36]">
+                {/* Linhas de SALDO INICIAL: exibição apenas — não são lançamentos,
+                    não têm ações (sem lápis nem lixeira) e entram nos créditos do
+                    extrato para a matemática do saldo fechar. */}
+                {contasParaLinhasSaldo.map((c) => {
+                  const fin = financeiros.find((f) => f.id === c.financeiro_id)
+                  return (
+                    <tr key={`saldo-inicial-${c.id}`} className="bg-[#0E141D]">
+                      <td className="py-3 px-4 text-xs text-gray-600 font-mono italic">—</td>
+                      <td className="py-3 px-4 text-xs text-gray-600 italic">
+                        {fin ? fin.nome : '—'}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="text-sm text-gray-400 italic">
+                          Saldo inicial — {c.banco}
+                        </div>
+                        <div className="text-[11px] text-gray-500 italic">Conta {c.conta}</div>
+                      </td>
+                      <td className="py-3 px-4 text-xs text-gray-500 italic">
+                        Saldo de abertura da conta
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="inline-flex items-center text-[11px] italic text-gray-500 border border-[#232B36] px-2 py-0.5 rounded-full">
+                          Abertura
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-right whitespace-nowrap font-mono font-semibold text-sm text-[#00D68F]/70 italic">
+                        + {formatCurrency(Number(c.saldo_inicial))}
+                      </td>
+                      <td className="py-3 px-4 text-center text-xs text-gray-600 italic">—</td>
+                    </tr>
+                  )
+                })}
                 {lancamentosFiltrados.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="py-12 text-center text-gray-500 text-sm">
@@ -1414,6 +1476,52 @@ export default function LancamentosPage() {
                   })
                 )}
               </tbody>
+              <tfoot className="border-t-2 border-[#232B36] bg-[#0B0F14] text-sm">
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="py-2.5 px-4 text-right text-xs uppercase tracking-wide text-gray-400 font-semibold"
+                  >
+                    Total de Créditos{' '}
+                    <span className="normal-case font-normal">
+                      (saldos iniciais + entradas realizadas)
+                    </span>
+                  </td>
+                  <td className="py-2.5 px-4 text-right font-mono font-bold text-[#00D68F] whitespace-nowrap">
+                    + {formatCurrency(totaisExtrato.creditos)}
+                  </td>
+                  <td aria-hidden="true" />
+                </tr>
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="py-2.5 px-4 text-right text-xs uppercase tracking-wide text-gray-400 font-semibold"
+                  >
+                    Total de Débitos{' '}
+                    <span className="normal-case font-normal">(saídas realizadas)</span>
+                  </td>
+                  <td className="py-2.5 px-4 text-right font-mono font-bold text-[#FF5C5C] whitespace-nowrap">
+                    − {formatCurrency(totaisExtrato.debitos)}
+                  </td>
+                  <td aria-hidden="true" />
+                </tr>
+                <tr className="border-t border-[#232B36]">
+                  <td colSpan={5} className="py-3 px-4 text-right text-white font-bold text-sm">
+                    Saldo Atual{' '}
+                    <span className="font-normal text-xs text-gray-400">
+                      (= saldos iniciais + créditos − débitos realizados; previsto não entra)
+                    </span>
+                  </td>
+                  <td
+                    className={`py-3 px-4 text-right font-mono font-bold whitespace-nowrap ${
+                      totaisExtrato.saldoAtual < 0 ? 'text-[#FF5C5C]' : 'text-white'
+                    }`}
+                  >
+                    {formatCurrency(totaisExtrato.saldoAtual)}
+                  </td>
+                  <td aria-hidden="true" />
+                </tr>
+              </tfoot>
             </table>
           </div>
         </CardContent>
