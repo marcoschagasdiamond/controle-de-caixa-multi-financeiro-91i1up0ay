@@ -1,19 +1,46 @@
-// Tabela anual: 12 meses (jan–dez) do ano corrente, com despesas e receitas
-// recorrentes (mensal contínua ou parcelada) previstas mês a mês, com totais.
-// Usa a MESMA regra de ocorrência do Fluxo de Caixa (recorrenteOcorreEm, em
-// src/lib/recorrentes.ts) e respeita a segregação por financeiro.
+// Tabela anual: 12 meses (jan–dez) do ano selecionado, com despesas e receitas
+// recorrentes (mensal contínua ou parcelada) e as PARCELAS de lançamentos
+// parcelados previstas mês a mês, com totais. Usa a MESMA regra de ocorrência do
+// Fluxo de Caixa (recorrenteOcorreEm, em src/lib/recorrentes.ts) e respeita a
+// segregação por financeiro (Passo 1).
 
 import { useEffect, useMemo, useState } from 'react'
 import { Financeiro, Lancamento, LancamentoRecorrente } from '@/types/financeiro'
 import { formatCurrency } from '@/lib/formatters'
-import { recorrenteOcorreEm } from '@/lib/recorrentes'
+import { numeroParcela, recorrenteOcorreEm } from '@/lib/recorrentes'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { CalendarClock, Pencil, Trash2 } from 'lucide-react'
 
-// Uma linha da projeção sabe se é recorrente por ter id "r-<uuid>"
+// Vencimento de um recorrente em um mês: dia_mes limitado ao último dia do mês
+// (31 → 28/30, igual a recorrenteOcorreEm).
+function diaEfetivoNoMes(ano: number, mes0: number, diaMes: number): number {
+  const ultimoDia = new Date(ano, mes0 + 1, 0).getDate()
+  return Math.min(Math.max(diaMes || 1, 1), ultimoDia)
+}
+
+// Linhas da projeção: recorrente mensal = id "r-<uuid>"; PARCELA de parcelado =
+// id "p-<uuid>#<ano>-<mês>". As duas formas apontam para o recorrente de origem
+// (necessário para as ações editar/excluir).
 const ehLinhaRecorrente = (id: string) => id.startsWith('r-')
-const idRecorrenteDaLinha = (id: string) => id.slice(2)
+
+// Chave de agrupamento das parcelas de um parcelado no ano: "p-<id>#<ano>"
+const chaveParcela = (id: string, ano: number) => `p-${id}#${ano}`
+
+// Último ano em que o recorrente gera ocorrência — para o seletor de anos incluir
+// anos futuros com parcelas. Mensal contínua: data_inicial + 5 (folga, mesma do
+// Painel). Parcelado: data_inicial + ⌈total_parcelas/12⌉ meses.
+function anoDaUltimaOcorrencia(r: LancamentoRecorrente): number | null {
+  const aIni = Number(r.data_inicial?.slice(0, 4))
+  if (!Number.isFinite(aIni) || aIni <= 1900) return null
+  if (r.total_parcelas && r.total_parcelas > 0) {
+    return aIni + Math.floor((r.total_parcelas - 1) / 12)
+  }
+  return r.ativo ? aIni + 5 : aIni
+}
+// Recorrente de origem de uma linha de parcela: de "p-<uuid>#<ano>-<mês>" → uuid
+const idRecorrenteDaParcela = (id: string) =>
+  id.startsWith('p-') ? id.slice(2, id.indexOf('#')) : null
 
 // Seletor de ano do título: mesma lista de anos do Painel (atual −5 a +5,
 // estendida pelos dados). Options com bg/texto explícitos para não herdar o
@@ -55,6 +82,18 @@ const MESES = [
   'nov',
   'dez',
 ] as const
+
+// Forma da linha da projeção: recorrente (parcelado ou não) ou parcela avulsa
+interface LinhaProjecao {
+  id: string
+  desc: string
+  fin: string
+  tipo: 'credito' | 'debito'
+  valores: number[]
+  parcelado: boolean
+  parcelaNumero?: number // N de "Parcela N/M" (só nas linhas de parcela)
+  parcelaTotal?: number // M de "Parcela N/M"
+}
 
 interface Props {
   recorrentes: LancamentoRecorrente[]
@@ -100,39 +139,23 @@ export default function TabelaAnualRecorrentes({
     [lancamentos, financeiroIdFiltro],
   )
 
-  // Mesma amostragem das células da tabela (dia 15 de cada mês): diz se o
-  // recorrente aparece em algum mês do ano dado.
-  const ocorreEmAlgumMesDoAno = (r: LancamentoRecorrente, ano: number) =>
-    Array.from({ length: 12 }, (_, m) => `${ano}-${String(m + 1).padStart(2, '0')}-15`).some(
-      (dataISO) => recorrenteOcorreEm(dataISO, r.dia_mes, r.data_inicial, r.total_parcelas),
-    )
-
-  // Lista de anos do seletor: mesma regra do Painel (atual −5 a +5), estendida
-  // pelos anos com lançamentos e pelas parcelas futuras dos recorrentes.
-  // Recebíveis sem data não têm ano e não entram.
+  // Lista de anos do seletor: base atual ±5, estendida pelos anos presentes nos
+  // lançamentos e pelo último ano com ocorrência de cada recorrente (parcelados
+  // incluídos — se houver parcela em um ano fora da lista, ele entra).
   const anosDisponiveis = useMemo(() => {
     let min = anoBase - 5
     let max = anoBase + 5
-    for (const l of lancamentosVisiveis) {
-      const a = Number(l.data.slice(0, 4))
+    const expandir = (a: number) => {
       if (Number.isFinite(a) && a > 1900) {
         if (a < min) min = a
         if (a > max) max = a
       }
     }
+    for (const l of lancamentosVisiveis) expandir(Number(l.data.slice(0, 4)))
     for (const r of recorrentesVisiveis) {
-      const aIni = Number(r.data_inicial.slice(0, 4))
-      if (!Number.isFinite(aIni) || aIni <= 1900) continue
-      if (aIni < min) min = aIni
-      if (r.total_parcelas) {
-        // Parcelado: última ocorrência é data_inicial + (total_parcelas - 1) meses
-        const fim = aIni + Math.floor((r.total_parcelas - 1) / 12)
-        if (fim > max) max = fim
-      } else if (r.ativo) {
-        // Mensal contínua ativa: segue gerando ocorrências — folga de 5 anos
-        const fim = aIni + 5
-        if (fim > max) max = fim
-      }
+      expandir(Number(r.data_inicial.slice(0, 4)))
+      const fimUltimaParcela = anoDaUltimaOcorrencia(r)
+      if (fimUltimaParcela) expandir(fimUltimaParcela)
     }
     const arr: number[] = []
     for (let a = min; a <= max; a++) arr.push(a)
@@ -146,72 +169,88 @@ export default function TabelaAnualRecorrentes({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anosDisponiveis])
 
-  // Linhas de recorrentes/parcelados: valor previsto em cada um dos 12 meses.
-  const linhasRecorrentes = useMemo(() => {
-    return recorrentesVisiveis
-      .filter((r) => r.ativo)
-      .map((r) => {
-        const fin = financeiros.find((f) => f.id === r.financeiro_id)
-        const parcelado = !!r.total_parcelas && r.total_parcelas > 0
-        const rotulo = parcelado
-          ? `${r.descricao} — ${r.total_parcelas}×`
-          : `${r.descricao} — mensal`
-        const valores = Array.from({ length: 12 }, (_, m) => {
-          const dataISO = `${ano}-${String(m + 1).padStart(2, '0')}-15`
-          return recorrenteOcorreEm(dataISO, r.dia_mes, r.data_inicial, r.total_parcelas)
-            ? Math.abs(Number(r.valor))
-            : 0
-        })
-        return { id: `r-${r.id}`, desc: rotulo, fin: fin ? fin.nome : '—', tipo: r.tipo, valores }
-      })
-      .sort((a, b) => a.desc.localeCompare(b.desc))
-  }, [recorrentesVisiveis, financeiros, ano])
+  // Linhas da projeção:
+  //  • recorrente mensal contínua → 1 linha (valor nos meses em que ocorre)
+  //  • PARCELADO                  → 1 linha POR PARCELA futura do ano: cai na
+  //    coluna do mês do seu vencimento, com rótulo "Parcela N/M — <descrição>"
+  //    e badge "Parcelado". A 1ª parcela realizada já existe como lançamento e
+  //    não é repetida aqui.
+  const linhas = useMemo<LinhaProjecao[]>(() => {
+    const saida: LinhaProjecao[] = []
 
-  // Linhas de lançamentos avulsos do ano (dão contexto; a regra do recorrente é separada).
-  const linhasAvulsos = useMemo(() => {
-    return lancamentosVisiveis
-      .filter((l) => l.data.startsWith(String(ano)))
-      .map((l) => {
-        const fin = financeiros.find((f) => f.id === l.financeiro_id)
-        const valores = Array.from({ length: 12 }, (_, m) => {
-          return l.data.startsWith(`${ano}-${String(m + 1).padStart(2, '0')}`)
-            ? Math.abs(Number(l.valor))
-            : 0
-        })
-        return {
-          id: `l-${l.id}`,
-          desc: l.descricao || '(sem descrição)',
-          fin: fin ? fin.nome : '—',
-          tipo: l.tipo,
-          valores,
+    for (const r of recorrentesVisiveis) {
+      if (!r.ativo) continue
+      const fin = financeiros.find((f) => f.id === r.financeiro_id)
+      const nomeFin = fin ? fin.nome : '—'
+      const parcelado = !!r.total_parcelas && r.total_parcelas > 0
+
+      if (parcelado) {
+        // Cada parcela do ano em sua própria linha, no mês do vencimento
+        for (let m = 0; m < 12; m++) {
+          const dia = diaEfetivoNoMes(ano, m, r.dia_mes)
+          const dataISO = `${ano}-${String(m + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
+          if (!recorrenteOcorreEm(dataISO, r.dia_mes, r.data_inicial, r.total_parcelas)) continue
+          const nParcela = numeroParcela(dataISO, r.data_inicial)
+          if (nParcela === null) continue
+          saida.push({
+            id: `p-${r.id}#${ano}-${m}`,
+            desc: `Parcela ${nParcela}/${r.total_parcelas} — ${r.descricao}`,
+            fin: nomeFin,
+            tipo: r.tipo,
+            valores: Array.from({ length: 12 }, (_, mm) =>
+              mm === m ? Math.abs(Number(r.valor)) : 0,
+            ),
+            parcelado: true,
+            parcelaNumero: nParcela,
+            parcelaTotal: r.total_parcelas,
+          })
         }
+        continue
+      }
+
+      // Mensal contínua: 1 linha com o valor em cada mês de ocorrência
+      const valores = Array.from({ length: 12 }, (_, m) => {
+        const dataISO = `${ano}-${String(m + 1).padStart(2, '0')}-15`
+        return recorrenteOcorreEm(dataISO, r.dia_mes, r.data_inicial, r.total_parcelas)
+          ? Math.abs(Number(r.valor))
+          : 0
       })
-      .sort((a, b) => a.desc.localeCompare(b.desc))
-  }, [lancamentos, financeiros, ano])
+      saida.push({
+        id: `r-${r.id}`,
+        desc: `${r.descricao} — mensal`,
+        fin: nomeFin,
+        tipo: r.tipo,
+        valores,
+        parcelado: false,
+      })
+    }
 
-  const linhas = useMemo(
-    () => [...linhasRecorrentes, ...linhasAvulsos],
-    [linhasRecorrentes, linhasAvulsos],
-  )
+    return saida.sort((a, b) => a.desc.localeCompare(b.desc))
+  }, [recorrentesVisiveis, lancamentosVisiveis, financeiros, ano])
 
-  // Recorrente original por id de linha "r-<id>" — para as ações editar/excluir
+  // Recorrente original por id de linha — para as ações editar/excluir. Ambos os
+  // formatos ("r-<uuid>" do mensal e "p-<uuid>#<ano>-<mês>" da parcela) apontam
+  // para o recorrente de origem, então editar/excluir operam sobre a programação.
   const recorrentePorLinha = useMemo(() => {
     const mapa = new Map<string, LancamentoRecorrente>()
-    recorrentes.forEach((r) => mapa.set(`r-${r.id}`, r))
+    recorrentes.forEach((r) => {
+      mapa.set(`r-${r.id}`, r)
+      for (const a of anosDisponiveis) mapa.set(chaveParcela(r.id, a), r)
+    })
     return mapa
-  }, [recorrentesVisiveis])
+  }, [recorrentes, anosDisponiveis])
 
   const totaisMes = useMemo(() => {
     const despesas = Array.from({ length: 12 }, () => 0)
     const receitas = Array.from({ length: 12 }, () => 0)
-    for (const l of linhasRecorrentes) {
+    for (const l of linhas) {
       const alvo = l.tipo === 'credito' ? receitas : despesas
       l.valores.forEach((v, m) => {
         alvo[m] += v
       })
     }
     return { despesas, receitas }
-  }, [linhasRecorrentes])
+  }, [linhas])
 
   const totalAnoDespesas = totaisMes.despesas.reduce((a, b) => a + b, 0)
   const totalAnoReceitas = totaisMes.receitas.reduce((a, b) => a + b, 0)
@@ -219,7 +258,7 @@ export default function TabelaAnualRecorrentes({
   // Nome do financeiro do Passo 1, para a mensagem de estado vazio
   const nomeFinFiltro = financeiros.find((f) => f.id === financeiroIdFiltro)?.nome
 
-  if (linhasRecorrentes.length === 0) {
+  if (linhas.length === 0) {
     return (
       <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
         <CardHeader className="pb-4 border-b border-[#232B36]">
@@ -296,11 +335,21 @@ export default function TabelaAnualRecorrentes({
                 const totalLinha = l.valores.reduce((a, b) => a + b, 0)
                 const recorrente = ehLinhaRecorrente(l.id)
                   ? recorrentePorLinha.get(l.id)
-                  : undefined
+                  : (() => {
+                      const idOrigem = idRecorrenteDaParcela(l.id)
+                      return idOrigem ? recorrentePorLinha.get(`r-${idOrigem}`) : undefined
+                    })()
                 return (
                   <tr key={l.id} className="hover:bg-[#1A222D]/50 transition-colors">
                     <td className="py-2.5 px-4 sticky left-0 bg-[#141A22]">
-                      <div className="font-medium text-white text-xs">{l.desc}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-white text-xs">{l.desc}</span>
+                        {l.parcelado && (
+                          <Badge className="bg-[#7C5CFF]/15 text-[#7C5CFF] border border-[#7C5CFF]/40 text-[9px] uppercase tracking-wide">
+                            Parcelado
+                          </Badge>
+                        )}
+                      </div>
                       <div className="text-[10px] text-gray-500 flex items-center gap-1.5">
                         <span>{l.fin}</span>
                         <span
