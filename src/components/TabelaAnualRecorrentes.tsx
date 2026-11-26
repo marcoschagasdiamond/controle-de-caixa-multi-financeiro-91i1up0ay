@@ -14,6 +14,19 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { CalendarClock, Pencil, Trash2 } from 'lucide-react'
 
+// Lançamentos avulsos (não recorrentes) por mês do ano: receitas positivas,
+// despesas negativas — MESMA convenção das outras linhas da projeção.
+function calcularAvulsosPorMes(ano: number, lancamentos: Lancamento[]): number[] {
+  const avulsos = Array.from({ length: 12 }, () => 0)
+  for (const l of lancamentos) {
+    if (l.data.slice(0, 4) !== String(ano)) continue
+    const m = Number(l.data.slice(5, 7)) - 1
+    if (m < 0 || m > 11) continue
+    avulsos[m] += l.tipo === 'credito' ? Number(l.valor) : -Number(l.valor)
+  }
+  return avulsos
+}
+
 // Vencimento de um recorrente em um mês: dia_mes limitado ao último dia do mês
 // (31 → 28/30, igual a recorrenteOcorreEm).
 function diaEfetivoNoMes(ano: number, mes0: number, diaMes: number): number {
@@ -91,6 +104,7 @@ interface LinhaProjecao {
   parcelado: boolean
   parcelasNumeros?: (number | null)[]
   parcelaTotal?: number // M de "N/M" (só nas linhas de parcelado)
+  observacao?: string | null // texto discreto sob o rótulo da linha
 }
 
 interface Props {
@@ -201,6 +215,7 @@ export default function TabelaAnualRecorrentes({
         saida.push({
           id: `r-${r.id}`,
           desc: `${r.descricao} — parcelado ${r.total_parcelas}×`,
+          observacao: r.observacao || null,
           fin: nomeFin,
           tipo: r.tipo,
           valores,
@@ -254,6 +269,15 @@ export default function TabelaAnualRecorrentes({
 
   const totalAnoDespesas = totaisMes.despesas.reduce((a, b) => a + b, 0)
   const totalAnoReceitas = totaisMes.receitas.reduce((a, b) => a + b, 0)
+
+  // Lançamentos avulsos do ano (já filtrados pelo financeiro): receitas +,
+  // despesas −. Entram no Total Geral do Ano do rodapé.
+  const avulsosPorMes = useMemo(
+    () => calcularAvulsosPorMes(ano, lancamentosVisiveis),
+    [ano, lancamentosVisiveis],
+  )
+  const totalAvulsosAno = avulsosPorMes.reduce((a, b) => a + b, 0)
+  const totalGeralAno = totalAnoReceitas - totalAnoDespesas + totalAvulsosAno
 
   // Nome do financeiro do Passo 1, para a mensagem de estado vazio
   const nomeFinFiltro = financeiros.find((f) => f.id === financeiroIdFiltro)?.nome
@@ -349,6 +373,14 @@ export default function TabelaAnualRecorrentes({
                         <div className="text-[10px] text-[#7C5CFF]/80">
                           {l.parcelasNumeros?.filter(Boolean).length || 0} de {l.parcelaTotal}{' '}
                           parcela{l.parcelaTotal > 1 ? 's' : ''} neste ano
+                        </div>
+                      ) : null}
+                      {l.observacao ? (
+                        <div
+                          className="text-[10px] text-gray-400 italic truncate max-w-[240px]"
+                          title={l.observacao}
+                        >
+                          {l.observacao}
                         </div>
                       ) : null}
                       <div className="text-[10px] text-gray-500 flex items-center gap-1.5">
@@ -458,6 +490,41 @@ export default function TabelaAnualRecorrentes({
                 ))}
                 <td className="py-2.5 px-4 text-right font-mono text-[#00D68F]">
                   {formatCurrency(totalAnoReceitas)}
+                </td>
+              </tr>
+              {/* Total Geral do Ano: recorrentes + parcelas + lançamentos avulsos
+                  (receitas +, despesas −). Linha destacada, sem ações. */}
+              <tr className="border-t border-[#232B36] bg-[#141A22]">
+                <td className="py-2.5 px-4 sticky left-0 bg-[#141A22] text-white">
+                  Total Geral do Ano
+                </td>
+                {avulsosPorMes.map((av, m) => {
+                  const saldoMes = totaisMes.receitas[m] - totaisMes.despesas[m] + av
+                  return (
+                    <td
+                      key={m}
+                      className={`py-2.5 px-2 text-center font-mono text-[11px] whitespace-nowrap ${
+                        saldoMes === 0
+                          ? 'text-gray-700'
+                          : saldoMes > 0
+                            ? 'text-[#00D68F]'
+                            : 'text-[#FF5C5C]'
+                      }`}
+                    >
+                      {saldoMes === 0 ? '—' : formatCurrency(saldoMes).replace('R$', '').trim()}
+                    </td>
+                  )
+                })}
+                <td
+                  className={`py-2.5 px-4 text-right font-mono text-sm font-bold ${
+                    totalGeralAno === 0
+                      ? 'text-gray-300'
+                      : totalGeralAno > 0
+                        ? 'text-[#00D68F]'
+                        : 'text-[#FF5C5C]'
+                  }`}
+                >
+                  {formatCurrency(totalGeralAno)}
                 </td>
               </tr>
             </tfoot>

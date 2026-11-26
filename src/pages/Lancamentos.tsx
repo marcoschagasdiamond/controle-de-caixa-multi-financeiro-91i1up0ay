@@ -105,6 +105,9 @@ export default function LancamentosPage() {
     'nenhuma',
   )
   const [totalParcelas, setTotalParcelas] = useState('')
+  // Observação da RECORRÊNCIA (coluna observacao de lancamentos_recorrentes):
+  // distinta da observação do lançamento avulso; aparece na Projeção Anual.
+  const [observacaoRecorrente, setObservacaoRecorrente] = useState('')
 
   // Valor numérico de UMA parcela (o valor do campo) e o total geral do parcelamento
   const valorParcela = useMemo(() => {
@@ -297,6 +300,7 @@ export default function LancamentosPage() {
     setStatusLancamento('realizado')
     setTipoRecorrencia('nenhuma')
     setTotalParcelas('')
+    setObservacaoRecorrente('')
     setFormError(null)
     setErroContraparte(null)
   }
@@ -316,6 +320,7 @@ export default function LancamentosPage() {
     setSelectedPlanoId(r.plano_conta_id)
     setTipoRecorrencia(r.total_parcelas && r.total_parcelas > 0 ? 'parcelada' : 'continua')
     setTotalParcelas(r.total_parcelas ? String(r.total_parcelas) : '')
+    setObservacaoRecorrente(r.observacao || '')
     setFormTitle(`Editando: ${r.descricao || 'recorrente'}`)
     setFormError(null)
     setErroContraparte(null)
@@ -383,6 +388,7 @@ export default function LancamentosPage() {
           ...(tipoRecorrencia === 'parcelada'
             ? { total_parcelas: nParcelas }
             : { total_parcelas: null }),
+          observacao: observacaoRecorrente.trim() || null,
         })
         toast({
           title: 'Recorrente atualizado com sucesso!',
@@ -456,6 +462,7 @@ export default function LancamentosPage() {
             dia_mes: Number(dataLancamento.slice(8, 10)),
             data_inicial: dataLancamento,
             descricao: descricao.trim(),
+            observacao: observacaoRecorrente.trim() || null,
             ...(tipoRecorrencia === 'parcelada' ? { total_parcelas: nParcelas } : {}),
           })
         } catch (errRec: any) {
@@ -486,6 +493,7 @@ export default function LancamentosPage() {
       setDataLancamento(getTodayISODate())
       setTipoRecorrencia('nenhuma')
       setTotalParcelas('')
+      setObservacaoRecorrente('')
 
       // Recarrega listagem
       const novosLcs = await FinanceiroService.getLancamentos()
@@ -1102,16 +1110,19 @@ export default function LancamentosPage() {
                 />
               </div>
 
-              {/* Observação */}
-              <div className="md:col-span-2 space-y-1">
-                <Label className="text-xs text-gray-400 font-medium">Observações</Label>
-                <Input
-                  value={observacao}
-                  onChange={(e) => setObservacao(e.target.value)}
-                  placeholder="Detalhes adicionais..."
-                  className="bg-[#0B0F14] border-[#232B36] text-white"
-                />
-              </div>
+              {/* Observação do lançamento (some na edição de recorrente:
+                  lá a observação fica na caixa de Recorrência) */}
+              {!editandoRecorrenteId && (
+                <div className="md:col-span-2 space-y-1">
+                  <Label className="text-xs text-gray-400 font-medium">Observações</Label>
+                  <Input
+                    value={observacao}
+                    onChange={(e) => setObservacao(e.target.value)}
+                    placeholder="Detalhes adicionais..."
+                    className="bg-[#0B0F14] border-[#232B36] text-white"
+                  />
+                </div>
+              )}
             </div>
 
             {/* RECORRÊNCIA: vale para crédito e débito (mesmo formulário) */}
@@ -1202,6 +1213,26 @@ export default function LancamentosPage() {
                 <p className="text-[11px] text-gray-500">
                   Repete todo mês no mesmo dia, até você desativar em Configurações → Recorrentes.
                 </p>
+              )}
+              {tipoRecorrencia !== 'nenhuma' && (
+                <div className="space-y-1">
+                  <Label
+                    htmlFor="observacaoRecorrente"
+                    className="text-xs text-gray-400 font-medium"
+                  >
+                    Observação da recorrência
+                  </Label>
+                  <Input
+                    id="observacaoRecorrente"
+                    value={observacaoRecorrente}
+                    onChange={(e) => setObservacaoRecorrente(e.target.value)}
+                    placeholder="Ex.: Boleto mensal do condomínio, contrato 2026/12..."
+                    className="bg-[#141A22] border-[#232B36] text-white"
+                  />
+                  <p className="text-[11px] text-gray-500">
+                    Aparece em letra pequena na linha correspondente da Projeção Anual.
+                  </p>
+                </div>
               )}
             </div>
 
