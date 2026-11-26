@@ -254,7 +254,8 @@ export default function RelatorioPessoaPage() {
                 aria-label="Filtrar por empresa"
                 value={financeiroId ?? ''}
                 onChange={(e) => setFinanceiroId(e.target.value || null)}
-                className="h-9 px-3 rounded-md bg-[#141A22] border border-[#232B36] text-white text-xs font-semibold"
+                style={{ colorScheme: 'dark' }}
+                className="h-9 px-3 rounded-md bg-[#141A22] border border-[#232B36] text-white text-xs font-semibold [&>option]:bg-[#141A22] [&>option]:text-white"
               >
                 <option value="">Todas as empresas</option>
                 {opcoesEmpresa.map((f) => (
@@ -271,7 +272,8 @@ export default function RelatorioPessoaPage() {
                 aria-label="Selecionar período"
                 value={periodo}
                 onChange={(e) => setPeriodo(e.target.value as PeriodoRelatorio)}
-                className="h-9 px-3 rounded-md bg-[#141A22] border border-[#232B36] text-white text-xs font-semibold"
+                style={{ colorScheme: 'dark' }}
+                className="h-9 px-3 rounded-md bg-[#141A22] border border-[#232B36] text-white text-xs font-semibold [&>option]:bg-[#141A22] [&>option]:text-white"
               >
                 {PERIODOS.map((p) => (
                   <option key={p.id} value={p.id}>
