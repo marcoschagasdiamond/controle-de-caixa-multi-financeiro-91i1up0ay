@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { AlertaContasFixas } from '@/components/AlertaContasFixas'
 import { AlertasVencimento } from '@/components/AlertasVencimento'
+import { ContasPendentes } from '@/components/ContasPendentes'
 import { PainelGraficos } from '@/components/PainelGraficos'
 import {
   DollarSign,
@@ -781,8 +782,20 @@ export default function Index() {
         </section>
       )}
 
+      {/* CONTAS A PAGAR E A RECEBER: previstos do financeiro/seleção atual, com ação de marcar pago/recebido */}
+      <ContasPendentes
+        lancamentos={lancamentos}
+        financeiros={finsAcesso}
+        financeiroIdSelecionado={selectedFinId}
+        onAtualizado={carregarPainel}
+      />
+
       {/* ALERTAS DE VENCIMENTO: lançamentos previstos atrasados/vencendo e resolvidos em atraso */}
-      <AlertasVencimento lancamentos={lancamentos} financeiros={finsAcesso} />
+      <AlertasVencimento
+        lancamentos={lancamentos}
+        financeiros={finsAcesso}
+        financeiroIdSelecionado={selectedFinId}
+      />
 
       {/* ALERTA DIÁRIO: Contas fixas vencidas e vencendo nos próximos 7 dias */}
       <AlertaContasFixas

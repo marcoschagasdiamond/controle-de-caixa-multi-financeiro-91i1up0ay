@@ -13,6 +13,8 @@ const LIMITE_RESOLVIDOS = 10
 interface AlertasVencimentoProps {
   lancamentos: Lancamento[]
   financeiros: Financeiro[] // financeiros acessíveis ao usuário logado
+  /** Financeiro selecionado no Painel ('todos' = consolidado) */
+  financeiroIdSelecionado: string
 }
 
 interface ItemAlerta {
@@ -26,14 +28,22 @@ interface ItemAlerta {
 const vencimentoDe = (l: Lancamento) => l.data_vencimento || l.data
 
 /** Card "Alertas de vencimento": atrasados, vencendo em 7 dias e resolvidos em atraso. */
-export function AlertasVencimento({ lancamentos, financeiros }: AlertasVencimentoProps) {
+export function AlertasVencimento({
+  lancamentos,
+  financeiros,
+  financeiroIdSelecionado,
+}: AlertasVencimentoProps) {
   const navigate = useNavigate()
   const hoje = getTodayISODate()
 
   const { atrasados, vencendo, resolvidos } = useMemo(() => {
     // Defesa extra além do RLS: só financeiros que o usuário pode acessar
     const acessiveis = new Map(financeiros.map((f) => [f.id, f.nome]))
-    const visiveis = lancamentos.filter((l) => acessiveis.has(l.financeiro_id))
+    const visiveis = lancamentos
+      .filter((l) => acessiveis.has(l.financeiro_id))
+      .filter(
+        (l) => financeiroIdSelecionado === 'todos' || l.financeiro_id === financeiroIdSelecionado,
+      )
     const nomeDe = (l: Lancamento) => acessiveis.get(l.financeiro_id) || ''
 
     const atrasados: ItemAlerta[] = []
@@ -74,7 +84,7 @@ export function AlertasVencimento({ lancamentos, financeiros }: AlertasVenciment
     vencendo.sort((a, b) => a.dias - b.dias)
     resolvidos.sort((a, b) => b.lancamento.data.localeCompare(a.lancamento.data))
     return { atrasados, vencendo, resolvidos: resolvidos.slice(0, LIMITE_RESOLVIDOS) }
-  }, [lancamentos, financeiros, hoje])
+  }, [lancamentos, financeiros, financeiroIdSelecionado, hoje])
 
   const abrirLancamento = (l: Lancamento) =>
     navigate('/lancamentos', { state: { editarLancamentoId: l.id } })
@@ -100,7 +110,9 @@ export function AlertasVencimento({ lancamentos, financeiros }: AlertasVenciment
           <span className="min-w-0">
             <span className="block text-sm text-white truncate">
               {l.descricao || 'Sem descrição'}
-              <span className="text-gray-500"> · {item.nomeFinanceiro}</span>
+              {financeiroIdSelecionado === 'todos' && (
+                <span className="text-gray-500"> · {item.nomeFinanceiro}</span>
+              )}
             </span>
             <span className={`block text-xs font-medium ${cor}`}>
               {tom === 'cinza'
