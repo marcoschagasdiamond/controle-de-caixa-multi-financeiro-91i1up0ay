@@ -2,7 +2,9 @@
 // recorrentes (mensal contínua ou parcelada) e as PARCELAS de lançamentos
 // parcelados previstas mês a mês, com totais. Usa a MESMA regra de ocorrência do
 // Fluxo de Caixa (recorrenteOcorreEm, em src/lib/recorrentes.ts) e respeita a
-// segregação por financeiro (Passo 1).
+// segregação por financeiro (Passo 1). Parcelados aparecem em UMA linha só,
+// com o valor de cada parcela na coluna do mês do vencimento e o número
+// da parcela (3/10) em letra pequena dentro da célula.
 
 import { useEffect, useMemo, useState } from 'react'
 import { Financeiro, Lancamento, LancamentoRecorrente } from '@/types/financeiro'
@@ -19,17 +21,14 @@ function diaEfetivoNoMes(ano: number, mes0: number, diaMes: number): number {
   return Math.min(Math.max(diaMes || 1, 1), ultimoDia)
 }
 
-// Linhas da projeção: recorrente mensal = id "r-<uuid>"; PARCELA de parcelado =
-// id "p-<uuid>#<ano>-<mês>". As duas formas apontam para o recorrente de origem
-// (necessário para as ações editar/excluir).
+// Linhas da projeção: toda linha usa o id "r-<uuid>" do recorrente de origem
+// (necessário para as ações editar/excluir) — mensal ou parcelado, uma linha
+// por programação.
 const ehLinhaRecorrente = (id: string) => id.startsWith('r-')
-
-// Chave de agrupamento das parcelas de um parcelado no ano: "p-<id>#<ano>"
-const chaveParcela = (id: string, ano: number) => `p-${id}#${ano}`
 
 // Último ano em que o recorrente gera ocorrência — para o seletor de anos incluir
 // anos futuros com parcelas. Mensal contínua: data_inicial + 5 (folga, mesma do
-// Painel). Parcelado: data_inicial + ⌈total_parcelas/12⌉ meses.
+// Painel). Parcelado: data_inicial + ⌊(total_parcelas−1)/12⌋ meses.
 function anoDaUltimaOcorrencia(r: LancamentoRecorrente): number | null {
   const aIni = Number(r.data_inicial?.slice(0, 4))
   if (!Number.isFinite(aIni) || aIni <= 1900) return null
@@ -38,9 +37,6 @@ function anoDaUltimaOcorrencia(r: LancamentoRecorrente): number | null {
   }
   return r.ativo ? aIni + 5 : aIni
 }
-// Recorrente de origem de uma linha de parcela: de "p-<uuid>#<ano>-<mês>" → uuid
-const idRecorrenteDaParcela = (id: string) =>
-  id.startsWith('p-') ? id.slice(2, id.indexOf('#')) : null
 
 // Seletor de ano do título: mesma lista de anos do Painel (atual −5 a +5,
 // estendida pelos dados). Options com bg/texto explícitos para não herdar o
@@ -83,7 +79,9 @@ const MESES = [
   'dez',
 ] as const
 
-// Forma da linha da projeção: recorrente (parcelado ou não) ou parcela avulsa
+// Forma da linha da projeção: uma linha por programação (recorrente mensal ou
+// parcelamento). Em linhas de parcelado, parcelasNumeros[m] guarda o N da
+// parcela que vence no mês m (ex.: 3 de 10) para exibir na célula.
 interface LinhaProjecao {
   id: string
   desc: string
@@ -91,8 +89,8 @@ interface LinhaProjecao {
   tipo: 'credito' | 'debito'
   valores: number[]
   parcelado: boolean
-  parcelaNumero?: number // N de "Parcela N/M" (só nas linhas de parcela)
-  parcelaTotal?: number // M de "Parcela N/M"
+  parcelasNumeros?: (number | null)[]
+  parcelaTotal?: number // M de "N/M" (só nas linhas de parcelado)
 }
 
 interface Props {
@@ -171,10 +169,11 @@ export default function TabelaAnualRecorrentes({
 
   // Linhas da projeção:
   //  • recorrente mensal contínua → 1 linha (valor nos meses em que ocorre)
-  //  • PARCELADO                  → 1 linha POR PARCELA futura do ano: cai na
-  //    coluna do mês do seu vencimento, com rótulo "Parcela N/M — <descrição>"
-  //    e badge "Parcelado". A 1ª parcela realizada já existe como lançamento e
-  //    não é repetida aqui.
+  //  • PARCELADO                  → UMA linha só, rotulada "<descrição> —
+  //    parcelado Nx": o valor de cada parcela do ano cai na coluna do mês do
+  //    seu vencimento e o número da parcela (3/10) aparece dentro da célula.
+  //    A 1ª parcela realizada já existe como lançamento e não é repetida aqui.
+  //    Ano sem nenhuma parcela → linha não aparece (Total Ano seria 0).
   const linhas = useMemo<LinhaProjecao[]>(() => {
     const saida: LinhaProjecao[] = []
 
@@ -185,26 +184,30 @@ export default function TabelaAnualRecorrentes({
       const parcelado = !!r.total_parcelas && r.total_parcelas > 0
 
       if (parcelado) {
-        // Cada parcela do ano em sua própria linha, no mês do vencimento
+        // Todas as parcelas do ano agrupadas em uma linha, cada valor no mês
+        // do seu vencimento
+        const valores = Array.from({ length: 12 }, () => 0)
+        const parcelasNumeros = Array.from({ length: 12 }, (): number | null => null)
         for (let m = 0; m < 12; m++) {
           const dia = diaEfetivoNoMes(ano, m, r.dia_mes)
           const dataISO = `${ano}-${String(m + 1).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
           if (!recorrenteOcorreEm(dataISO, r.dia_mes, r.data_inicial, r.total_parcelas)) continue
           const nParcela = numeroParcela(dataISO, r.data_inicial)
           if (nParcela === null) continue
-          saida.push({
-            id: `p-${r.id}#${ano}-${m}`,
-            desc: `Parcela ${nParcela}/${r.total_parcelas} — ${r.descricao}`,
-            fin: nomeFin,
-            tipo: r.tipo,
-            valores: Array.from({ length: 12 }, (_, mm) =>
-              mm === m ? Math.abs(Number(r.valor)) : 0,
-            ),
-            parcelado: true,
-            parcelaNumero: nParcela,
-            parcelaTotal: r.total_parcelas,
-          })
+          valores[m] = Math.abs(Number(r.valor))
+          parcelasNumeros[m] = nParcela
         }
+        if (!valores.some((v) => v !== 0)) continue
+        saida.push({
+          id: `r-${r.id}`,
+          desc: `${r.descricao} — parcelado ${r.total_parcelas}×`,
+          fin: nomeFin,
+          tipo: r.tipo,
+          valores,
+          parcelado: true,
+          parcelasNumeros,
+          parcelaTotal: r.total_parcelas,
+        })
         continue
       }
 
@@ -228,17 +231,14 @@ export default function TabelaAnualRecorrentes({
     return saida.sort((a, b) => a.desc.localeCompare(b.desc))
   }, [recorrentesVisiveis, lancamentosVisiveis, financeiros, ano])
 
-  // Recorrente original por id de linha — para as ações editar/excluir. Ambos os
-  // formatos ("r-<uuid>" do mensal e "p-<uuid>#<ano>-<mês>" da parcela) apontam
-  // para o recorrente de origem, então editar/excluir operam sobre a programação.
+  // Recorrente original por id de linha — para as ações editar/excluir. Toda
+  // linha ("r-<uuid>", mensal ou parcelado) aponta para o recorrente de origem,
+  // então editar/excluir operam sobre a programação.
   const recorrentePorLinha = useMemo(() => {
     const mapa = new Map<string, LancamentoRecorrente>()
-    recorrentes.forEach((r) => {
-      mapa.set(`r-${r.id}`, r)
-      for (const a of anosDisponiveis) mapa.set(chaveParcela(r.id, a), r)
-    })
+    recorrentes.forEach((r) => mapa.set(`r-${r.id}`, r))
     return mapa
-  }, [recorrentes, anosDisponiveis])
+  }, [recorrentes])
 
   const totaisMes = useMemo(() => {
     const despesas = Array.from({ length: 12 }, () => 0)
@@ -333,12 +333,7 @@ export default function TabelaAnualRecorrentes({
             <tbody className="divide-y divide-[#232B36]">
               {linhas.map((l) => {
                 const totalLinha = l.valores.reduce((a, b) => a + b, 0)
-                const recorrente = ehLinhaRecorrente(l.id)
-                  ? recorrentePorLinha.get(l.id)
-                  : (() => {
-                      const idOrigem = idRecorrenteDaParcela(l.id)
-                      return idOrigem ? recorrentePorLinha.get(`r-${idOrigem}`) : undefined
-                    })()
+                const recorrente = recorrentePorLinha.get(l.id)
                 return (
                   <tr key={l.id} className="hover:bg-[#1A222D]/50 transition-colors">
                     <td className="py-2.5 px-4 sticky left-0 bg-[#141A22]">
@@ -350,6 +345,12 @@ export default function TabelaAnualRecorrentes({
                           </Badge>
                         )}
                       </div>
+                      {l.parcelado && l.parcelaTotal ? (
+                        <div className="text-[10px] text-[#7C5CFF]/80">
+                          {l.parcelasNumeros?.filter(Boolean).length || 0} de {l.parcelaTotal}{' '}
+                          parcela{l.parcelaTotal > 1 ? 's' : ''} neste ano
+                        </div>
+                      ) : null}
                       <div className="text-[10px] text-gray-500 flex items-center gap-1.5">
                         <span>{l.fin}</span>
                         <span
@@ -359,20 +360,34 @@ export default function TabelaAnualRecorrentes({
                         </span>
                       </div>
                     </td>
-                    {l.valores.map((v, m) => (
-                      <td
-                        key={m}
-                        className={`py-2.5 px-2 text-center font-mono text-[11px] whitespace-nowrap ${
-                          v === 0
-                            ? 'text-gray-700'
-                            : l.tipo === 'credito'
-                              ? 'text-[#00D68F]'
-                              : 'text-[#FF5C5C]'
-                        }`}
-                      >
-                        {v === 0 ? '—' : formatCurrency(v).replace('R$', '').trim()}
-                      </td>
-                    ))}
+                    {l.valores.map((v, m) => {
+                      const nParcela = l.parcelasNumeros?.[m] ?? null
+                      return (
+                        <td
+                          key={m}
+                          className={`py-2.5 px-2 text-center font-mono text-[11px] whitespace-nowrap ${
+                            v === 0
+                              ? 'text-gray-700'
+                              : l.tipo === 'credito'
+                                ? 'text-[#00D68F]'
+                                : 'text-[#FF5C5C]'
+                          }`}
+                        >
+                          {v === 0 ? (
+                            '—'
+                          ) : (
+                            <>
+                              {formatCurrency(v).replace('R$', '').trim()}
+                              {nParcela !== null && (
+                                <span className="block font-sans text-[9px] leading-tight text-gray-400">
+                                  {nParcela}/{l.parcelaTotal}
+                                </span>
+                              )}
+                            </>
+                          )}
+                        </td>
+                      )
+                    })}
                     <td
                       className={`py-2.5 px-4 text-right font-mono text-xs font-bold whitespace-nowrap ${
                         l.tipo === 'credito' ? 'text-[#00D68F]' : 'text-[#FF5C5C]'
