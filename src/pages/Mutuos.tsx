@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { FinanceiroService } from '@/services/financeiro'
 import { Financeiro, ContaBancaria, Mutuo } from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
+import { baixarCSV, valorCSV } from '@/lib/csv'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -20,6 +21,7 @@ import {
   Trash2,
   Loader2,
   ShieldAlert,
+  Download,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 
@@ -145,6 +147,50 @@ export default function MutuosPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // Exporta o histórico de mútuos em CSV pt-BR (BOM + ';')
+  const handleExportarMutuosCSV = () => {
+    if (mutuos.length === 0) {
+      toast({ title: 'Nenhum mútuo para exportar.' })
+      return
+    }
+    const finNome = (id: string) => financeiros.find((f) => f.id === id)?.nome || '-'
+    const contaBanco = (id: string) => contas.find((c) => c.id === id)?.banco || '-'
+    const linhas: unknown[][] = mutuos.map((m) => [
+      formatDateBR(m.data),
+      finNome(m.origem_financeiro_id),
+      contaBanco(m.origem_conta_id),
+      finNome(m.destino_financeiro_id),
+      contaBanco(m.destino_conta_id),
+      m.tipo,
+      valorCSV(Number(m.valor)),
+      `${m.taxa_juros}%`,
+      m.status,
+      m.documento || '',
+      m.observacao || '',
+    ])
+    baixarCSV(
+      `mutuos-${getTodayISODate()}.csv`,
+      [
+        'Data',
+        'Origem (Cedente)',
+        'Conta Origem',
+        'Destino (Beneficiário)',
+        'Conta Destino',
+        'Tipo',
+        'Valor (R$)',
+        'Juros (% a.m.)',
+        'Status',
+        'Documento',
+        'Observação',
+      ],
+      linhas,
+    )
+    toast({
+      title: 'Exportação concluída!',
+      description: `${mutuos.length} mútuo(s) exportado(s) em CSV (Excel pt-BR).`,
+    })
   }
 
   const handleExcluirMutuo = async (id: string) => {
@@ -444,8 +490,18 @@ export default function MutuosPage() {
 
       {/* LISTAGEM DE MÚTUOS */}
       <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
-        <CardHeader className="pb-3 border-b border-[#232B36]">
+        <CardHeader className="pb-3 border-b border-[#232B36] flex flex-row items-center justify-between">
           <CardTitle className="text-base font-bold text-white">Histórico de Mútuos</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportarMutuosCSV}
+            disabled={mutuos.length === 0}
+            className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer"
+          >
+            <Download className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+            Exportar CSV
+          </Button>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">

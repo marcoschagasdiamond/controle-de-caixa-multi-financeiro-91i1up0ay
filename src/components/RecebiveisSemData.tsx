@@ -191,6 +191,8 @@ export function RecebiveisSemData({
   const nParcelasCadastro = numParcelas ? parseInt(numParcelas, 10) : 0
   const valorParcelaCadastro =
     nParcelasCadastro > 1 && !isNaN(valorNum) ? valorNum / nParcelasCadastro : valorNum
+  // Nº de vezes da recorrência mensal (escopo do componente: usado na dica do JSX)
+  const nRecorrenciaCadastro = recorrenciaMeses ? parseInt(recorrenciaMeses, 10) : 0
 
   const limparFormulario = () => {
     setDescricao('')
@@ -780,13 +782,16 @@ export function RecebiveisSemData({
                     placeholder="Ex.: 12 — vazio = não repetir"
                     className="bg-[#0B0F14] border-[#232B36] text-white"
                   />
-                  {nRecorrencia >= 2 && dataPrevista && !isNaN(valorNum) && valorNum > 0 && (
-                    <p className="text-[11px] text-gray-500">
-                      {nRecorrencia} ocorrências mensais de {formatCurrency(valorNum)} — a 1ª em{' '}
-                      {formatDateBR(dataPrevista)}, as seguintes +1 mês. Cada uma alimenta os
-                      Alertas de vencimento e é recebida separadamente.
-                    </p>
-                  )}
+                  {nRecorrenciaCadastro >= 2 &&
+                    dataPrevista &&
+                    !isNaN(valorNum) &&
+                    valorNum > 0 && (
+                      <p className="text-[11px] text-gray-500">
+                        {nRecorrenciaCadastro} ocorrências mensais de {formatCurrency(valorNum)} — a
+                        1ª em {formatDateBR(dataPrevista)}, as seguintes +1 mês. Cada uma alimenta
+                        os Alertas de vencimento e é recebida separadamente.
+                      </p>
+                    )}
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="rec-prevista" className="text-xs text-gray-300 font-semibold">

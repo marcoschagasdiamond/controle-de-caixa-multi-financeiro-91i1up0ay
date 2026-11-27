@@ -7,7 +7,8 @@ import {
   LancamentoRecorrente,
   Budget,
 } from '@/types/financeiro'
-import { formatCurrency } from '@/lib/formatters'
+import { formatCurrency, getTodayISODate } from '@/lib/formatters'
+import { baixarCSV, valorCSV } from '@/lib/csv'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +24,7 @@ import {
   Edit2,
   RefreshCw,
   Loader2,
+  Download,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
@@ -248,6 +250,40 @@ export default function BudgetPage() {
     })
   }
 
+  // Exporta as linhas visíveis do Budget (orçado, realizado, variação) em CSV pt-BR
+  const handleExportarBudgetCSV = () => {
+    if (linhasBudget.length === 0) {
+      toast({ title: 'Nada para exportar: nenhuma categoria no budget.' })
+      return
+    }
+    const fin = financeiros.find((f) => f.id === selectedFinId)
+    const linhas: unknown[][] = linhasBudget
+      .filter((l) => l.orcado > 0 || l.realizado > 0)
+      .map((l) => [
+        l.plano.codigo || '',
+        l.plano.descricao,
+        l.plano.tipo,
+        valorCSV(l.orcado),
+        valorCSV(l.realizado),
+        valorCSV(l.variacaoR$),
+        `${l.percentual.toFixed(1)}%`,
+      ])
+    if (linhas.length === 0) {
+      toast({ title: 'Nada para exportar: nenhuma linha com valor orçado ou realizado.' })
+      return
+    }
+    linhas.push(['', 'TOTAIS', '', valorCSV(totalOrcado), valorCSV(totalRealizado), '', ''])
+    baixarCSV(
+      `budget-${fin ? fin.nome.toLowerCase().replace(/[^a-z0-9]+/g, '-') : 'financeiro'}-${selectedMes}.csv`,
+      ['Código', 'Categoria', 'Tipo', 'Orçado (R$)', 'Realizado (R$)', 'Variação (R$)', 'Execução'],
+      linhas,
+    )
+    toast({
+      title: 'Exportação concluída!',
+      description: `${linhas.length - 1} categoria(s) exportada(s) em CSV (Excel pt-BR) para ${selectedMes}.`,
+    })
+  }
+
   // Cores da barra de progresso conforme especificação:
   // Verde até 90%, amarelo 90-100%, vermelho acima de 100%
   const getBarColor = (pct: number) => {
@@ -320,6 +356,17 @@ export default function BudgetPage() {
           >
             <Wand2 className="w-4 h-4 mr-2" aria-hidden="true" />
             {aplicandoSugestao ? 'Aplicando…' : 'Preencher com sugestão'}
+          </Button>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportarBudgetCSV}
+            disabled={linhasBudget.length === 0}
+            className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] h-9 cursor-pointer"
+          >
+            <Download className="w-4 h-4 mr-2" aria-hidden="true" />
+            Exportar CSV
           </Button>
         </div>
       </div>

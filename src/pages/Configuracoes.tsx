@@ -10,6 +10,7 @@ import {
   LancamentoRecorrente,
 } from '@/types/financeiro'
 import { formatCurrency, getTodayISODate } from '@/lib/formatters'
+import { baixarCSV, valorCSV } from '@/lib/csv'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,6 +53,8 @@ import FormularioCategoria, { ModoCategoria } from '@/components/FormularioCateg
 const LS_FILTRO_CONTA_FIN = 'ccmf_filtro_conta_financeiro'
 const LS_FILTRO_CONTA_TIPO = 'ccmf_filtro_conta_tipo'
 const LS_FILTRO_FIXA_FIN = 'ccmf_filtro_fixa_financeiro'
+
+const CAB_FIXAS = ['Financeiro', 'Descrição', 'Dia Vencimento', 'Valor Estimado (R$)', 'Tipo']
 
 function lerFiltroSalvo(chave: string): string {
   try {
@@ -643,6 +646,29 @@ export default function ConfiguracoesPage() {
     toast({
       title: 'Exportação concluída!',
       description: `${contasFiltradas.length} conta(s) exportada(s) em CSV (Excel pt-BR).`,
+    })
+  }
+
+  // Exporta as contas fixas visíveis (respeitando filtros) em CSV pt-BR (BOM + ';')
+  const handleExportarFixasCSV = () => {
+    if (contasFixasFiltradas.length === 0) {
+      toast({ title: 'Nenhuma conta fixa para exportar com os filtros atuais.' })
+      return
+    }
+    const linhas: unknown[][] = contasFixasFiltradas.map((cf) => {
+      const fin = financeiros.find((f) => f.id === cf.financeiro_id)
+      return [
+        fin?.nome || '-',
+        cf.descricao,
+        `Dia ${cf.dia_vencimento}`,
+        valorCSV(Number(cf.valor_estimado)),
+        cf.tipo,
+      ]
+    })
+    baixarCSV(`contas-fixas-${getTodayISODate()}.csv`, CAB_FIXAS, linhas)
+    toast({
+      title: 'Exportação concluída!',
+      description: `${contasFixasFiltradas.length} conta(s) fixa(s) exportada(s) em CSV (Excel pt-BR).`,
     })
   }
 
@@ -1289,7 +1315,7 @@ export default function ConfiguracoesPage() {
                   ))}
                 </select>
               </div>
-              <div className="flex items-end">
+              <div className="flex items-end gap-2">
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1297,6 +1323,15 @@ export default function ConfiguracoesPage() {
                   className="w-full text-xs text-gray-400 hover:text-white h-8"
                 >
                   Limpar Filtros
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportarFixasCSV}
+                  className="w-full text-xs text-gray-300 hover:text-white h-8 border-[#232B36] hover:bg-[#1E2633] cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                  Exportar CSV
                 </Button>
               </div>
             </div>
