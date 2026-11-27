@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { FinanceiroService } from '@/services/financeiro'
 import { Financeiro, PlanoConta, RecebivelSemData } from '@/types/financeiro'
@@ -243,9 +243,26 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
     }
   }
 
-  const recebiveisPendentes = recebiveis.filter((r) => r.status === 'pendente')
-  const recebiveisConvertidos = recebiveis.filter((r) => r.status === 'convertido')
+  // SEGREGAÇÃO PATRIMONIAL (Passo 1 de Lançamentos): as listas e os totais mostram
+  // somente os recebíveis da empresa selecionada; com "todos" (ou sem seleção),
+  // mostram todas as empresas — o badge de empresa por item identifica a origem.
+  const passaFiltroFinanceiro = (financeiroId: string) =>
+    !financeiroPadraoId || financeiroPadraoId === 'todos' || financeiroId === financeiroPadraoId
+  const recebiveisPendentes = useMemo(
+    () =>
+      recebiveis.filter((r) => r.status === 'pendente' && passaFiltroFinanceiro(r.financeiro_id)),
+    [recebiveis, financeiroPadraoId],
+  )
+  const recebiveisConvertidos = useMemo(
+    () =>
+      recebiveis.filter((r) => r.status === 'convertido' && passaFiltroFinanceiro(r.financeiro_id)),
+    [recebiveis, financeiroPadraoId],
+  )
   const totalPendente = recebiveisPendentes.reduce((acc, r) => acc + Number(r.valor_total), 0)
+  const financeiroFiltro =
+    financeiroPadraoId && financeiroPadraoId !== 'todos'
+      ? financeiros.find((f) => f.id === financeiroPadraoId)
+      : undefined
 
   const finPadrao =
     financeiroPadraoId && financeiroPadraoId !== 'todos'
@@ -505,6 +522,9 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
           </CardTitle>
           <span className="text-xs text-gray-400 font-mono">
             Total: {formatCurrency(totalPendente)}
+            {financeiroFiltro && (
+              <span className="text-gray-500 font-sans"> · {financeiroFiltro.nome}</span>
+            )}
           </span>
         </CardHeader>
         <CardContent className="p-0">
@@ -610,6 +630,11 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
             <CardTitle className="text-base font-bold text-white flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-[#00D68F]" aria-hidden="true" />
               Convertidos em Lançamento ({recebiveisConvertidos.length})
+              {financeiroFiltro && (
+                <span className="text-[11px] font-normal text-gray-500 font-sans">
+                  · {financeiroFiltro.nome}
+                </span>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
