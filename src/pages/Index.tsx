@@ -8,6 +8,7 @@ import {
   ExtratoItem,
   ContaFixa,
   LancamentoRecorrente,
+  RecebivelOcorrencia,
   RecebivelSemData,
 } from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
@@ -797,7 +798,8 @@ export default function Index() {
           mais recebíveis pendentes com data prevista (mesmas faixas, clique abre a edição) */}
       <AlertasVencimento
         lancamentos={lancamentos}
-        recebiveisPendentes={recebiveis.filter((r) => r.status === 'pendente')}
+        recebiveisPendentes={recebiveisPendentes}
+        ocorrenciasPendentes={ocorrenciasRecebiveis}
         financeiros={finsAcesso}
         financeiroIdSelecionado={selectedFinId}
       />

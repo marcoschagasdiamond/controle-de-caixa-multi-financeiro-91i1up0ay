@@ -372,10 +372,14 @@ export default function LancamentosPage() {
   // Vindo do card de Alertas de vencimento (Painel): clique num RECEBÍVEL com
   // data prevista guarda o id; o componente RecebiveisSemData abre em edição.
   const [recebivelIdParaEditar, setRecebivelIdParaEditar] = useState<string | null>(null)
+  // Ocorrência mensal clicada no alerta (se houver): converte/marca só aquele mês
+  const [ocorrenciaIdParaEditar, setOcorrenciaIdParaEditar] = useState<string | null>(null)
   useEffect(() => {
-    const idAlvo = (location.state as { editarRecebivelId?: string } | null)?.editarRecebivelId
+    const st = location.state as { editarRecebivelId?: string; editarOcorrenciaId?: string } | null
+    const idAlvo = st?.editarRecebivelId
     if (!idAlvo) return
     setRecebivelIdParaEditar(idAlvo)
+    setOcorrenciaIdParaEditar(st?.editarOcorrenciaId || null)
     navigate(location.pathname, { replace: true, state: null })
   }, [location.state, navigate])
 
@@ -1826,6 +1830,7 @@ export default function LancamentosPage() {
         planos={planos}
         financeiroPadraoId={selectedFinId || undefined}
         editarRecebivelId={recebivelIdParaEditar}
+        editarOcorrenciaId={ocorrenciaIdParaEditar}
       />
 
       {/* Confirmação de exclusão de recorrente (Projeção Anual) */}

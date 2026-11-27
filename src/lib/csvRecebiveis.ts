@@ -371,4 +371,66 @@ export const exportarRecebiveisCSV = (
   URL.revokeObjectURL(url)
 }
 
+// ---------- Export CONSOLIDADO por empresa ----------
+// Um CSV com seção por empresa: nome da empresa como cabeçalho, recebíveis
+// pendentes dela (uma linha cada), total da seção; ao final, o total geral.
+
+// Monta as linhas do CSV consolidado (seção por empresa + total geral ao final).
+export const linhasRecebiveisConsolidadoCSV = (
+  recebiveis: RecebivelSemData[],
+  financeiros: Financeiro[],
+): string[][] => {
+  const linhas: string[][] = []
+  const cabecalhoItens = ['Descrição', 'Contratante', 'Status', 'Data prevista', 'Valor (R$)']
+  let totalGeral = 0
+
+  // Empresas na ordem em que os financeiros aparecem (mesma da tela)
+  for (const fin of financeiros) {
+    const itens = recebiveis.filter((r) => r.financeiro_id === fin.id && r.status === 'pendente')
+    if (itens.length === 0) continue
+    linhas.push([`Empresa: ${fin.nome}`])
+    linhas.push(cabecalhoItens)
+    let totalEmpresa = 0
+    for (const r of itens) {
+      const valor = Number(r.valor_total) || 0
+      totalEmpresa += valor
+      totalGeral += valor
+      linhas.push([
+        r.descricao,
+        r.contratante || '',
+        labelGatilho(r),
+        r.data_prevista ? formatDateBR(r.data_prevista) : '',
+        valorCSV(valor),
+      ])
+    }
+    linhas.push([`Total ${fin.nome}`, '', '', '', valorCSV(totalEmpresa)])
+    linhas.push([])
+  }
+
+  linhas.push(['TOTAL GERAL', '', '', '', valorCSV(totalGeral)])
+  return linhas
+}
+
+// Baixa o CSV consolidado (seções por empresa) com BOM para Excel.
+export const exportarRecebiveisConsolidadoCSV = (
+  recebiveis: RecebivelSemData[],
+  financeiros: Financeiro[],
+) => {
+  const linhas = linhasRecebiveisConsolidadoCSV(recebiveis, financeiros)
+  const conteudo =
+    '\uFEFF' +
+    linhas
+      .map((l) => l.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))
+      .join('\r\n')
+  const blob = new Blob([conteudo], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `recebiveis-consolidado-${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 export { parseCSV }

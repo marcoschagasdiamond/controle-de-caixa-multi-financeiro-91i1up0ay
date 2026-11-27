@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { FinanceiroService } from '@/services/financeiro'
-import { Financeiro, PlanoConta, RecebivelSemData } from '@/types/financeiro'
+import { Financeiro, PlanoConta, RecebivelOcorrencia, RecebivelSemData } from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,7 +12,21 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { DialogoConverterRecebivel } from '@/components/DialogoConverterRecebivel'
 import { DialogoImportarRecebiveis } from '@/components/DialogoImportarRecebiveis'
-import { exportarRecebiveisCSV } from '@/lib/csvRecebiveis'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import {
+  exportarRecebiveisCSV,
+  exportarRecebiveisConsolidadoCSV,
+  removerAcentos,
+} from '@/lib/csvRecebiveis'
 import {
   Inbox,
   PlusCircle,
@@ -58,6 +72,8 @@ interface Props {
   financeiroPadraoId?: string
   // Id do recebível a abrir em edição (clique num item do card Alertas de vencimento)
   editarRecebivelId?: string | null
+  // Ocorrência mensal clicada no alerta: abre a conversão daquele mês específico
+  editarOcorrenciaId?: string | null
 }
 
 // Seção "Recebíveis sem Data (Contratos a Receber)" dentro de Lançamentos.
@@ -68,6 +84,7 @@ export function RecebiveisSemData({
   planos,
   financeiroPadraoId,
   editarRecebivelId,
+  editarOcorrenciaId,
 }: Props) {
   const { toast } = useToast()
 
@@ -102,7 +119,9 @@ export function RecebiveisSemData({
 
   // Conversão
   const [convertendo, setConvertendo] = useState<RecebivelSemData | null>(null)
+  const [convertendoOcorrenciaId, setConvertendoOcorrenciaId] = useState<string | null>(null)
   const [carregandoOcorrencias, setCarregandoOcorrencias] = useState(false)
+  const [ocorrenciasCarregadas, setOcorrenciasCarregadas] = useState<RecebivelOcorrencia[]>([])
 
   // Importação CSV
   const [importOpen, setImportOpen] = useState(false)
@@ -131,8 +150,22 @@ export function RecebiveisSemData({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Ocorrências mensais dos recorrentes: alimentam a lista de pendentes
+  const carregarOcorrencias = async () => {
+    try {
+      setOcorrenciasCarregadas(await FinanceiroService.getRecebivelOcorrencias())
+    } catch {
+      // Lista funciona sem as ocorrências (só deixa de mostrar as parcelas)
+    }
+  }
+  useEffect(() => {
+    carregarOcorrencias()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Vindo do card Alertas de vencimento do Painel: abre o recebível em edição
   // quando a lista já tiver carregado (e uma única vez por id recebido).
+  // Com ocorrência clicada, abre o diálogo de conversão daquele mês específico.
   const editadoViaAlerta = useRef<string | null>(null)
   useEffect(() => {
     if (!editarRecebivelId || loading) return
@@ -140,9 +173,19 @@ export function RecebiveisSemData({
     const alvo = recebiveis.find((r) => r.id === editarRecebivelId)
     if (!alvo) return
     editadoViaAlerta.current = editarRecebivelId
-    iniciarEdicao(alvo)
+    if (editarOcorrenciaId) {
+      const oc = ocorrenciasCarregadas.find((o) => o.id === editarOcorrenciaId)
+      if (oc && oc.status === 'pendente') {
+        setConvertendoOcorrenciaId(oc.id)
+        setConvertendo(alvo)
+      } else {
+        iniciarEdicao(alvo)
+      }
+    } else {
+      iniciarEdicao(alvo)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editarRecebivelId, recebiveis, loading])
+  }, [editarRecebivelId, editarOcorrenciaId, recebiveis, ocorrenciasCarregadas, loading])
 
   const valorNum = parseFloat(valorTotal.replace(',', '.'))
   const nParcelasCadastro = numParcelas ? parseInt(numParcelas, 10) : 0
@@ -341,17 +384,39 @@ export function RecebiveisSemData({
     }
   }
 
-  const handleExcluir = async (id: string, desc: string) => {
+  // Alcance da exclusão/edição num recebível com recorrência:
+  // 'so-esta' = só o registro clicado (o pai/1ª ocorrência);
+  // 'esta-e-futuras' = registro + ocorrências 2..N (comportamento antigo).
+  type AlcanceExclusao = 'so-esta' | 'esta-e-futuras'
+
+  const [exclusao, setExclusao] = useState<{
+    id: string
+    desc: string
+    recorrente: boolean
+  } | null>(null)
+
+  const handleExcluir = (id: string, desc: string) => {
     const r = recebiveis.find((x) => x.id === id)
-    const temRecorrencia = Boolean(r?.recorrencia_meses && r.recorrencia_meses >= 2)
-    const msg = temRecorrencia
-      ? `Excluir o recebível "${desc}" e TODAS as suas ocorrências mensais futuras? Esta ação não pode ser desfeita.`
-      : `Excluir o recebível "${desc}"? Esta ação não pode ser desfeita.`
-    if (!window.confirm(msg)) return
+    const recorrente = Boolean(r?.recorrencia_meses && r.recorrencia_meses >= 2)
+    // Sem recorrência (ou 1ª sozinha): confirmação direta, como antes
+    if (!recorrente) setExclusao({ id, desc, recorrente: false })
+    else setExclusao({ id, desc, recorrente: true })
+  }
+
+  const confirmarExclusao = async (alcance: AlcanceExclusao) => {
+    if (!exclusao) return
+    const { id, desc } = exclusao
     try {
-      // As ocorrências apagam em cascata (ON DELETE CASCADE)
-      await FinanceiroService.deleteRecebivelSemData(id)
-      setRecebiveis((prev) => prev.filter((x) => x.id !== id))
+      if (alcance === 'so-esta') {
+        // "Só esta": apaga apenas as ocorrências filhas e transforma o pai em
+        // recebível simples (sem recorrência) — o histórico permanece.
+        await FinanceiroService.deleteRecebivelOcorrenciasFuturas(id, 2)
+        await FinanceiroService.updateRecebivelSemData(id, { recorrencia_meses: null })
+      } else {
+        // "Esta e todas as futuras": exclui o pai; as ocorrências apagam em cascata
+        await FinanceiroService.deleteRecebivelSemData(id)
+        setRecebiveis((prev) => prev.filter((x) => x.id !== id))
+      }
       toast({ title: 'Recebível excluído' })
     } catch (err: any) {
       toast({
@@ -359,6 +424,9 @@ export function RecebiveisSemData({
         title: 'Erro ao excluir',
         description: err.message,
       })
+    } finally {
+      setExclusao(null)
+      carregarOcorrencias()
     }
   }
 
@@ -385,6 +453,8 @@ export function RecebiveisSemData({
     if (filtroDataAte && (!r.data_prevista || r.data_prevista > filtroDataAte)) return false
     return true
   }
+  // Recebíveis pendentes (registros pai). Recorrentes seguem aqui: cada um
+  // aparece como "1/…N" e as parcelas seguintes entram como itens próprios.
   const recebiveisPendentes = useMemo(
     () =>
       recebiveis.filter(
@@ -404,6 +474,33 @@ export function RecebiveisSemData({
       filtroDataAte,
     ],
   )
+  // Itens listáveis de pendentes: registro pai (+ ocorrências 2..N pendentes,
+  // com data própria e fração n/N), todos passando pelos mesmos filtros.
+  const itensPendentes = useMemo(() => {
+    const itens: Array<{ recebivel: RecebivelSemData; ocorrencia?: RecebivelOcorrencia }> = []
+    for (const r of recebiveisPendentes) {
+      itens.push({ recebivel: r })
+      if (!(r.recorrencia_meses && r.recorrencia_meses >= 2)) continue
+      const ocs = ocorrenciasCarregadas
+        .filter(
+          (o) =>
+            o.recebivel_pai_id === r.id &&
+            o.status === 'pendente' &&
+            passaFiltroFinanceiro(o.financeiro_id),
+        )
+        .sort((a, b) => a.numero - b.numero)
+      for (const o of ocs) {
+        const dataOc = o.data_prevista || null
+        const passaPeriodo =
+          (!filtroDataDe || (dataOc !== null && dataOc >= filtroDataDe)) &&
+          (!filtroDataAte || (dataOc !== null && dataOc <= filtroDataAte))
+        if (!passaPeriodo) continue
+        itens.push({ recebivel: r, ocorrencia: o })
+      }
+    }
+    return itens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recebiveisPendentes, ocorrenciasCarregadas, financeiroPadraoId, filtroDataDe, filtroDataAte])
   const recebiveisConvertidos = useMemo(
     () =>
       recebiveis.filter(
@@ -423,7 +520,10 @@ export function RecebiveisSemData({
       filtroDataAte,
     ],
   )
-  const totalPendente = recebiveisPendentes.reduce((acc, r) => acc + Number(r.valor_total), 0)
+  const totalPendente = itensPendentes.reduce(
+    (acc, it) => acc + Number(it.recebivel.valor_total),
+    0,
+  )
   const financeiroFiltro =
     financeiroPadraoId && financeiroPadraoId !== 'todos'
       ? financeiros.find((f) => f.id === financeiroPadraoId)
@@ -476,7 +576,7 @@ export function RecebiveisSemData({
                       size="sm"
                       onClick={() =>
                         exportarRecebiveisCSV(
-                          [...recebiveisPendentes, ...recebiveisConvertidos],
+                          [...itensPendentes.map((it) => it.recebivel), ...recebiveisConvertidos],
                           financeiros,
                         )
                       }
@@ -484,6 +584,21 @@ export function RecebiveisSemData({
                     >
                       <Download className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
                       Exportar CSV
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        exportarRecebiveisConsolidadoCSV(
+                          [...itensPendentes.map((it) => it.recebivel), ...recebiveisConvertidos],
+                          financeiros,
+                        )
+                      }
+                      className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                      Exportar consolidado
                     </Button>
                     <Button
                       type="button"
@@ -739,7 +854,7 @@ export function RecebiveisSemData({
         <CardHeader className="pb-3 border-b border-[#232B36] flex flex-row items-center justify-between">
           <CardTitle className="text-base font-bold text-white flex items-center gap-2">
             <Hourglass className="w-4 h-4 text-amber-400" aria-hidden="true" />
-            Pendentes ({recebiveisPendentes.length})
+            Pendentes ({itensPendentes.length})
           </CardTitle>
           <span className="text-xs text-gray-400 font-mono">
             Total: {formatCurrency(totalPendente)}
@@ -839,31 +954,42 @@ export function RecebiveisSemData({
               <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
               Carregando…
             </div>
-          ) : recebiveisPendentes.length === 0 ? (
+          ) : itensPendentes.length === 0 ? (
             <div className="p-8 text-center text-xs text-gray-500">
               Nenhum recebível sem data pendente. Contratos a receber aparecem aqui.
             </div>
           ) : (
             <div className="divide-y divide-[#232B36]">
-              {recebiveisPendentes.map((r) => {
+              {itensPendentes.map(({ recebivel: r, ocorrencia }) => {
                 const fin = financeiros.find((f) => f.id === r.financeiro_id)
                 return (
                   <div
-                    key={r.id}
+                    key={ocorrencia ? `oc-${ocorrencia.id}` : r.id}
                     className="p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                   >
                     <div className="min-w-0">
                       <div className="font-semibold text-white text-sm flex items-center gap-1.5 flex-wrap">
                         {iconeGatilho(r)}
                         {r.descricao}
+                        {ocorrencia && (
+                          <Badge
+                            variant="outline"
+                            className="text-[9px] py-0 px-1 font-mono border-amber-400/60 text-amber-400"
+                          >
+                            parcela {ocorrencia.numero}/{r.recorrencia_meses ?? '?'}
+                          </Badge>
+                        )}
                       </div>
                       <div className="text-[11px] text-gray-400 flex items-center gap-2 mt-0.5 flex-wrap">
                         <span>{labelGatilho(r)}</span>
-                        {r.data_prevista && (
+                        {(ocorrencia?.data_prevista || r.data_prevista) && (
                           <>
                             <span aria-hidden="true">•</span>
                             <span className="text-gray-300">
-                              Previsto: {formatDateBR(r.data_prevista)}
+                              Previsto:{' '}
+                              {formatDateBR(
+                                ocorrencia?.data_prevista || (r.data_prevista as string),
+                              )}
                             </span>
                           </>
                         )}
@@ -891,7 +1017,7 @@ export function RecebiveisSemData({
                             <span>{r.total_parcelas}x</span>
                           </>
                         ) : null}
-                        {r.recorrencia_meses && r.recorrencia_meses >= 2 ? (
+                        {r.recorrencia_meses && r.recorrencia_meses >= 2 && !ocorrencia ? (
                           <>
                             <span aria-hidden="true">•</span>
                             <Badge
@@ -919,7 +1045,11 @@ export function RecebiveisSemData({
                       <Button
                         variant="ghost"
                         size="icon"
-                        aria-label={`Editar recebível ${r.descricao}`}
+                        aria-label={
+                          ocorrencia
+                            ? `Editar ocorrência ${ocorrencia.numero} de ${r.descricao}`
+                            : `Editar recebível ${r.descricao}`
+                        }
                         onClick={() => iniciarEdicao(r)}
                         className="text-gray-500 hover:text-[#00D68F] hover:bg-[#00D68F]/10 h-8 w-8 cursor-pointer"
                       >
@@ -927,11 +1057,14 @@ export function RecebiveisSemData({
                       </Button>
                       <Button
                         size="sm"
-                        onClick={() => setConvertendo(r)}
+                        onClick={() => {
+                          setConvertendoOcorrenciaId(ocorrencia?.id ?? null)
+                          setConvertendo(r)
+                        }}
                         className="bg-[#00D68F] hover:bg-[#00B97A] text-[#0B0F14] font-bold text-xs cursor-pointer"
                       >
                         <CalendarClock className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
-                        Definir data
+                        {ocorrencia ? 'Definir data (parcela)' : 'Definir data'}
                       </Button>
                       <Button
                         variant="ghost"
@@ -1014,8 +1147,15 @@ export function RecebiveisSemData({
       <DialogoConverterRecebivel
         recebivel={convertendo}
         planos={planos}
-        onClose={() => setConvertendo(null)}
-        onConvertido={carregar}
+        ocorrenciaId={convertendoOcorrenciaId}
+        onClose={() => {
+          setConvertendo(null)
+          setConvertendoOcorrenciaId(null)
+        }}
+        onConvertido={() => {
+          carregar()
+          carregarOcorrencias()
+        }}
       />
 
       {/* DIÁLOGO DE IMPORTAÇÃO CSV */}

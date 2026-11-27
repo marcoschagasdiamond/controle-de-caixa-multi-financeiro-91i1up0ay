@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Financeiro, Lancamento, RecebivelSemData } from '@/types/financeiro'
+import { Financeiro, Lancamento, RecebivelOcorrencia, RecebivelSemData } from '@/types/financeiro'
 import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
 import { diasAtraso, diasEntre } from '@/lib/vencimento'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -14,6 +14,8 @@ interface AlertasVencimentoProps {
   lancamentos: Lancamento[]
   /** Recebíveis sem data pendentes; só entram os com data_prevista */
   recebiveisPendentes?: RecebivelSemData[]
+  /** Ocorrências mensais pendentes de recebíveis recorrentes (cada uma é um item) */
+  ocorrenciasPendentes?: RecebivelOcorrencia[]
   financeiros: Financeiro[] // financeiros acessíveis ao usuário logado
   /** Financeiro selecionado no Painel ('todos' = consolidado) */
   financeiroIdSelecionado: string
@@ -22,6 +24,8 @@ interface AlertasVencimentoProps {
 interface ItemAlerta {
   lancamento?: Lancamento
   recebivel?: RecebivelSemData
+  /** Ocorrência mensal (n/N) de um recebível recorrente */
+  ocorrencia?: RecebivelOcorrencia
   nomeFinanceiro: string
   vencimento: string
   dias: number
@@ -34,6 +38,7 @@ const vencimentoDe = (l: Lancamento) => l.data_vencimento || l.data
 export function AlertasVencimento({
   lancamentos,
   recebiveisPendentes = [],
+  ocorrenciasPendentes = [],
   financeiros,
   financeiroIdSelecionado,
 }: AlertasVencimentoProps) {
@@ -86,6 +91,9 @@ export function AlertasVencimento({
     // Recebíveis pendentes com data prevista entram nas mesmas faixas
     for (const r of recebiveisPendentes) {
       if (!r.data_prevista) continue
+      // Recorrente: a 1ª ocorrência é exibida via ocorrência (abaixo) para
+      // mostrar a fração n/N; aqui entra só o não recorrente.
+      if (r.recorrencia_meses && r.recorrencia_meses >= 2) continue
       if (!permitido(r.financeiro_id) || !passaFiltro(r.financeiro_id)) continue
       const montar = (dias: number): ItemAlerta => ({
         recebivel: r,
@@ -96,17 +104,45 @@ export function AlertasVencimento({
       classificar(r.financeiro_id, r.data_prevista, montar)
     }
 
+    // Ocorrências mensais pendentes (recebíveis recorrentes): cada uma é um
+    // item próprio, com data prevista própria e fração n/N no rótulo.
+    for (const o of ocorrenciasPendentes) {
+      if (o.status !== 'pendente' || !o.data_prevista) continue
+      if (!permitido(o.financeiro_id) || !passaFiltro(o.financeiro_id)) continue
+      const pai = recebiveisPendentes.find((r) => r.id === o.recebivel_pai_id)
+      if (!pai) continue
+      const montar = (dias: number): ItemAlerta => ({
+        recebivel: pai,
+        ocorrencia: o,
+        nomeFinanceiro: nomeDe(o.financeiro_id),
+        vencimento: o.data_prevista as string,
+        dias,
+      })
+      classificar(o.financeiro_id, o.data_prevista, montar)
+    }
+
     atrasados.sort((a, b) => b.dias - a.dias)
     vencendo.sort((a, b) => a.dias - b.dias)
     resolvidos.sort((a, b) => (b.lancamento?.data || '').localeCompare(a.lancamento?.data || ''))
     return { atrasados, vencendo, resolvidos: resolvidos.slice(0, LIMITE_RESOLVIDOS) }
-  }, [lancamentos, recebiveisPendentes, financeiros, financeiroIdSelecionado, hoje])
+  }, [
+    lancamentos,
+    recebiveisPendentes,
+    ocorrenciasPendentes,
+    financeiros,
+    financeiroIdSelecionado,
+    hoje,
+  ])
 
   const abrirItem = (item: ItemAlerta) => {
     if (item.recebivel) {
-      // Recebível: abre a seção de recebíveis em modo edição do registro
+      // Recebível (ou ocorrência): abre a seção em modo edição do registro pai;
+      // com ocorrência, leva o id dela para converter só aquele mês.
       navigate('/lancamentos', {
-        state: { editarRecebivelId: item.recebivel.id },
+        state: {
+          editarRecebivelId: item.recebivel.id,
+          editarOcorrenciaId: item.ocorrencia?.id ?? null,
+        },
       })
     } else if (item.lancamento) {
       navigate('/lancamentos', { state: { editarLancamentoId: item.lancamento.id } })
@@ -124,7 +160,11 @@ export function AlertasVencimento({
       tom === 'vermelho' ? 'text-[#FF5C5C]' : tom === 'amarelo' ? 'text-[#FACC15]' : 'text-gray-400'
     const l = item.lancamento
     const r = item.recebivel
-    const key = r ? `rec-${r.id}` : `lan-${l?.id}`
+    const key = r
+      ? item.ocorrencia
+        ? `rec-oc-${item.ocorrencia.id}`
+        : `rec-${r.id}`
+      : `lan-${l?.id}`
     const ehRecebivel = Boolean(r)
 
     // Faixas de texto: recebível usa "recebimento previsto/atrasado"
@@ -149,7 +189,11 @@ export function AlertasVencimento({
     const arialLabel = r
       ? `Abrir recebível ${r.descricao}, data prevista ${formatDateBR(item.vencimento)}`
       : `Abrir lançamento ${l?.descricao || 'sem descrição'}, vencimento ${formatDateBR(item.vencimento)}`
-    const descricao = r ? r.descricao : l?.descricao || 'Sem descrição'
+    const descricao = r
+      ? item.ocorrencia
+        ? `${r.descricao} (parcela ${item.ocorrencia.numero}/${r.recorrencia_meses ?? '?'})`
+        : r.descricao
+      : l?.descricao || 'Sem descrição'
     const valor = r ? Number(r.valor_total) : Number(l?.valor ?? 0)
 
     return (
@@ -194,9 +238,14 @@ export function AlertasVencimento({
   return (
     <Card className="bg-[#141A22] border-[#232B36] text-white shadow-xl">
       <CardHeader className="pb-3 border-b border-[#232B36]">
-        <CardTitle className="text-base font-bold text-white flex items-center gap-2">
-          <AlertTriangle className="w-5 h-5 text-[#FF5C5C]" />
+        <CardTitle className="text-base font-bold text-white flex items-center gap-2 flex-wrap">
+          <AlertTriangle className="w-5 h-5 text-[#FF5C5C]" aria-hidden="true" />
           Alertas de vencimento
+          {(atrasados.length > 0 || vencendo.length > 0) && (
+            <span className="text-xs font-mono font-semibold text-gray-400">
+              {atrasados.length} atrasados · {vencendo.length} vencendo
+            </span>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="pt-4 space-y-5">

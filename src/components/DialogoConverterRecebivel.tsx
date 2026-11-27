@@ -26,13 +26,22 @@ interface ContaResumo {
 interface Props {
   recebivel: RecebivelSemData | null
   planos: PlanoConta[]
+  /** Ocorrência mensal sendo convertida (recebível recorrente): marca só ela */
+  ocorrenciaId?: string | null
   onClose: () => void
   onConvertido: () => void
 }
 
 // Diálogo "Definir data": escolhe data (e parcelas), cria lançamento(s)
 // previsto(s) pelo serviço existente e marca o recebível como convertido.
-export function DialogoConverterRecebivel({ recebivel, planos, onClose, onConvertido }: Props) {
+// COM OCORRÊNCIA: converte apenas a ocorrência clicada — as futuras seguem pendentes.
+export function DialogoConverterRecebivel({
+  recebivel,
+  planos,
+  ocorrenciaId,
+  onClose,
+  onConvertido,
+}: Props) {
   const { toast } = useToast()
 
   const [convData, setConvData] = useState('')
@@ -45,8 +54,9 @@ export function DialogoConverterRecebivel({ recebivel, planos, onClose, onConver
 
   useEffect(() => {
     if (!recebivel) return
-    setConvData('')
-    setConvParcelas(recebivel.total_parcelas ? String(recebivel.total_parcelas) : '')
+    // Ocorrência individual: valor/data da própria ocorrência, sem parcelamento
+    if (ocorrenciaId) setConvParcelas('')
+    else setConvParcelas(recebivel.total_parcelas ? String(recebivel.total_parcelas) : '')
     setConvPlanoId(recebivel.plano_conta_id || '')
     setConvContaId('')
     setConvError(null)
@@ -85,6 +95,34 @@ export function DialogoConverterRecebivel({ recebivel, planos, onClose, onConver
     try {
       setSalvando(true)
       const contrato = r.contratante ? `${r.descricao} — ${r.contratante}` : r.descricao
+
+      // CONVERSÃO DE OCORRÊNCIA MENSAL: 1 lançamento único, marca só a ocorrência
+      if (ocorrenciaId) {
+        const lancOc = await FinanceiroService.createLancamento({
+          financeiro_id: r.financeiro_id,
+          conta_id: convContaId,
+          plano_conta_id: convPlanoId,
+          tipo: 'credito',
+          valor: valorTotal,
+          data: convData,
+          descricao: contrato,
+          status: 'previsto',
+          contraparte: r.contratante || null,
+          observacao: r.observacao || null,
+          conciliado: false,
+        })
+        await FinanceiroService.updateRecebivelOcorrencia(ocorrenciaId, {
+          status: 'convertido',
+          lancamento_id: lancOc.id,
+        })
+        toast({
+          title: 'Ocorrência convertida em lançamento previsto!',
+          description: `${contrato} — ${formatCurrency(valorTotal)}. As próximas parcelas continuam pendentes.`,
+        })
+        onConvertido()
+        onClose()
+        return
+      }
 
       // Reusa o serviço existente: 1º lançamento + (se parcelado) recorrência
       const lanc = await FinanceiroService.createLancamento({
