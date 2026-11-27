@@ -45,6 +45,7 @@ import { useAuth } from '@/hooks/use-auth'
 import { useAcessoFinanceiros } from '@/hooks/use-acesso-financeiros'
 import RelatorioContas from '@/components/RelatorioContas'
 import AbaEquipe from '@/components/AbaEquipe'
+import { AbaOrganizacao } from '@/components/AbaOrganizacao'
 import ArvorePlanoContas from '@/components/ArvorePlanoContas'
 import FormularioGrupo, { ModoGrupo } from '@/components/FormularioGrupo'
 import FormularioCategoria, { ModoCategoria } from '@/components/FormularioCategoria'
@@ -78,6 +79,7 @@ export default function ConfiguracoesPage() {
     'recorrentes',
     'relatorio',
     'equipe',
+    'organizacao',
   ]
   const tabUrl = searchParams.get('tab') || ''
   const initialTab = TABS_VALIDAS.includes(tabUrl) ? tabUrl : 'financeiros'
@@ -219,7 +221,9 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  // Membro que cair em ?tab=equipe volta para a primeira aba (sem acesso)
+  // Membro que cair em ?tab=equipe ou ?tab=organizacao sem ser admin volta
+  // para a primeira aba (sem acesso). O estado de admin da organização é
+  // carregado pelo próprio componente da aba.
   useEffect(() => {
     if (!isMaster && activeTab === 'equipe') setActiveTab('financeiros')
   }, [isMaster, activeTab])
@@ -686,6 +690,13 @@ export default function ConfiguracoesPage() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="bg-[#141A22] border border-[#232B36] p-1 flex flex-wrap gap-1 w-full justify-start">
+          <TabsTrigger
+            value="organizacao"
+            className="data-[state=active]:bg-[#00D68F] data-[state=active]:text-[#0B0F14] text-xs font-semibold"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 mr-1.5" />
+            Organização
+          </TabsTrigger>
           <TabsTrigger
             value="financeiros"
             className="data-[state=active]:bg-[#00D68F] data-[state=active]:text-[#0B0F14] text-xs font-semibold"
@@ -1658,6 +1669,11 @@ export default function ConfiguracoesPage() {
             <AbaEquipe financeiros={financeiros} />
           </TabsContent>
         )}
+
+        {/* TAB ORGANIZAÇÃO: gestão multi-empresa (admin da organização gerencia; membro vê) */}
+        <TabsContent value="organizacao" className="space-y-6 mt-4">
+          <AbaOrganizacao />
+        </TabsContent>
       </Tabs>
     </div>
   )
