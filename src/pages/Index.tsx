@@ -78,6 +78,7 @@ export default function Index() {
   const [contasFixas, setContasFixas] = useState<ContaFixa[]>([])
   const [recorrentes, setRecorrentes] = useState<LancamentoRecorrente[]>([])
   const [recebiveis, setRecebiveis] = useState<RecebivelSemData[]>([])
+  const [ocorrenciasRecebiveis, setOcorrenciasRecebiveis] = useState<RecebivelOcorrencia[]>([])
   const [loading, setLoading] = useState(true)
 
   // Filtro de financeiro ou consolidado no Painel
@@ -134,13 +135,14 @@ export default function Index() {
   const carregarPainel = async () => {
     try {
       setLoading(true)
-      const [cts, lcs, ext, cfs, recs, rcds] = await Promise.all([
+      const [cts, lcs, ext, cfs, recs, rcds, ocs] = await Promise.all([
         FinanceiroService.getContas(),
         FinanceiroService.getLancamentos(),
         FinanceiroService.getExtratoItens(),
         FinanceiroService.getContasFixas(),
         FinanceiroService.getLancamentosRecorrentes(),
         FinanceiroService.getRecebiveisSemData(),
+        FinanceiroService.getRecebivelOcorrencias(),
       ])
       setContas(cts)
       setLancamentos(lcs)
@@ -148,6 +150,7 @@ export default function Index() {
       setContasFixas(cfs)
       setRecorrentes(recs)
       setRecebiveis(rcds)
+      setOcorrenciasRecebiveis(ocs)
     } catch (err) {
       console.error('Erro ao carregar painel:', err)
     } finally {

@@ -87,13 +87,22 @@ export function RecebiveisSemData({
   const [gatilhoOutro, setGatilhoOutro] = useState('')
   const [observacao, setObservacao] = useState('')
   const [dataPrevista, setDataPrevista] = useState('')
+  const [recorrenciaMeses, setRecorrenciaMeses] = useState('')
   const [selectedPlanoId, setSelectedPlanoId] = useState('')
+
+  // FILTROS DA LISTA (estado local, sem persistência)
+  const [filtroTexto, setFiltroTexto] = useState('')
+  const [filtroValorMin, setFiltroValorMin] = useState('')
+  const [filtroValorMax, setFiltroValorMax] = useState('')
+  const [filtroDataDe, setFiltroDataDe] = useState('')
+  const [filtroDataAte, setFiltroDataAte] = useState('')
   // Modo edição: id do recebível sendo editado (lápis no card de Pendentes)
   const [editandoId, setEditandoId] = useState<string | null>(null)
   const formularioRef = useRef<HTMLDivElement>(null)
 
   // Conversão
   const [convertendo, setConvertendo] = useState<RecebivelSemData | null>(null)
+  const [carregandoOcorrencias, setCarregandoOcorrencias] = useState(false)
 
   // Importação CSV
   const [importOpen, setImportOpen] = useState(false)
@@ -147,6 +156,7 @@ export function RecebiveisSemData({
     setContratante('')
     setObservacao('')
     setDataPrevista('')
+    setRecorrenciaMeses('')
     setGatilhoOutro('')
     setStatusGatilho('aguardando_despacho')
     setSelectedPlanoId('')
@@ -165,6 +175,7 @@ export function RecebiveisSemData({
     setGatilhoOutro(r.gatilho_outro || '')
     setObservacao(r.observacao || '')
     setDataPrevista(r.data_prevista || '')
+    setRecorrenciaMeses(r.recorrencia_meses ? String(r.recorrencia_meses) : '')
     setSelectedPlanoId(r.plano_conta_id || '')
     setFormError(null)
     // O contêiner de rolagem é o <main> do Layout: scrollIntoView rola os
@@ -206,11 +217,33 @@ export function RecebiveisSemData({
       setFormError('Se informar parcelas, use um número ≥ 2. Deixe vazio para pagamento único.')
       return
     }
+    const nRecorrencia = recorrenciaMeses ? parseInt(recorrenciaMeses, 10) : 0
+    if (recorrenciaMeses && (isNaN(nRecorrencia) || nRecorrencia < 2 || nRecorrencia > 120)) {
+      setFormError(
+        'Se informar recorrência, use um número de vezes entre 2 e 120. Deixe vazio para não repetir.',
+      )
+      return
+    }
+    if (nRecorrencia >= 2 && !dataPrevista) {
+      setFormError(
+        'Recorrência mensal exige a data prevista da 1ª ocorrência: informe-a para gerar as seguintes (+1 mês).',
+      )
+      return
+    }
+
+    // +1 mês por ocorrência (mesmo dia). Dia 29/30/31 cai no último dia do mês
+    // quando o mês seguinte não o tem (Date normaliza o excedente).
+    const somarMes = (iso: string, n: number) => {
+      const [a, m, d] = iso.split('-').map(Number)
+      const dt = new Date(Date.UTC(a, m - 1 + n, d))
+      return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`
+    }
 
     try {
       setSaving(true)
       if (editandoId) {
         // MODO EDIÇÃO: atualiza o registro existente (sem duplicar)
+        const anterior = recebiveis.find((r) => r.id === editandoId)
         await FinanceiroService.updateRecebivelSemData(editandoId, {
           financeiro_id: selectedFinId,
           descricao: descricao.trim(),
@@ -222,16 +255,47 @@ export function RecebiveisSemData({
           gatilho_outro: statusGatilho === 'outro' ? gatilhoOutro.trim() : null,
           observacao: observacao.trim() || null,
           plano_conta_id: selectedPlanoId || null,
+          recorrencia_meses: nRecorrencia >= 2 ? nRecorrencia : null,
         })
+
+        // Sincroniza as ocorrências futuras com a nova data prevista/recorrência
+        const nAnterior = anterior?.recorrencia_meses ? anterior.recorrencia_meses : 1
+        if (nRecorrencia >= 2 && dataPrevista) {
+          const atuais = await FinanceiroService.getRecebivelOcorrencias(editandoId)
+          // Recria do zero (menos a 1ª, que é o próprio registro): simples e sólido
+          if (atuais.length > 0) {
+            await FinanceiroService.deleteRecebivelOcorrenciasFuturas(editandoId, 2)
+          }
+          const novas = [] as Array<
+            Parameters<typeof FinanceiroService.createRecebivelOcorrencias>[0][number]
+          >
+          for (let i = 2; i <= nRecorrencia; i++) {
+            novas.push({
+              recebivel_pai_id: editandoId,
+              financeiro_id: selectedFinId,
+              numero: i,
+              data_prevista: somarMes(dataPrevista, i - 1),
+              status: 'pendente',
+              lancamento_id: null,
+            })
+          }
+          await FinanceiroService.createRecebivelOcorrencias(novas)
+        } else if (nRecorrencia < 2 && nAnterior >= 2) {
+          // Recorrência removida na edição: apaga as ocorrências futuras
+          await FinanceiroService.deleteRecebivelOcorrenciasFuturas(editandoId, 2)
+        }
         toast({
           title: 'Recebível atualizado!',
-          description: `${descricao.trim()} — alterações salvas com sucesso.`,
+          description:
+            nRecorrencia >= 2
+              ? `${descricao.trim()} — salvo; ${nRecorrencia - 1} ocorrência(s) mensal(is) atualizada(s).`
+              : `${descricao.trim()} — alterações salvas com sucesso.`,
         })
         limparFormulario()
         await carregar()
         return
       }
-      await FinanceiroService.createRecebivelSemData({
+      const criado = await FinanceiroService.createRecebivelSemData({
         financeiro_id: selectedFinId,
         descricao: descricao.trim(),
         data_prevista: dataPrevista || null,
@@ -242,10 +306,31 @@ export function RecebiveisSemData({
         gatilho_outro: statusGatilho === 'outro' ? gatilhoOutro.trim() : null,
         observacao: observacao.trim() || null,
         plano_conta_id: selectedPlanoId || null,
+        recorrencia_meses: nRecorrencia >= 2 ? nRecorrencia : null,
       })
+      // Ocorrências 2..N (+1 mês cada); a 1ª é o próprio registro
+      if (nRecorrencia >= 2 && dataPrevista) {
+        const novas = [] as Array<
+          Parameters<typeof FinanceiroService.createRecebivelOcorrencias>[0][number]
+        >
+        for (let i = 2; i <= nRecorrencia; i++) {
+          novas.push({
+            recebivel_pai_id: criado.id,
+            financeiro_id: selectedFinId,
+            numero: i,
+            data_prevista: somarMes(dataPrevista, i - 1),
+            status: 'pendente',
+            lancamento_id: null,
+          })
+        }
+        await FinanceiroService.createRecebivelOcorrencias(novas)
+      }
       toast({
         title: 'Recebível sem data registrado!',
-        description: `${descricao.trim()} — ${formatCurrency(v)} fora da projeção até você definir a data.`,
+        description:
+          nRecorrencia >= 2
+            ? `${descricao.trim()} — ${formatCurrency(v)} em ${nRecorrencia} ocorrências mensais, fora da projeção até você definir a data.`
+            : `${descricao.trim()} — ${formatCurrency(v)} fora da projeção até você definir a data.`,
       })
       limparFormulario()
       await carregar()
@@ -257,8 +342,14 @@ export function RecebiveisSemData({
   }
 
   const handleExcluir = async (id: string, desc: string) => {
-    if (!window.confirm(`Excluir o recebível "${desc}"? Esta ação não pode ser desfeita.`)) return
+    const r = recebiveis.find((x) => x.id === id)
+    const temRecorrencia = Boolean(r?.recorrencia_meses && r.recorrencia_meses >= 2)
+    const msg = temRecorrencia
+      ? `Excluir o recebível "${desc}" e TODAS as suas ocorrências mensais futuras? Esta ação não pode ser desfeita.`
+      : `Excluir o recebível "${desc}"? Esta ação não pode ser desfeita.`
+    if (!window.confirm(msg)) return
     try {
+      // As ocorrências apagam em cascata (ON DELETE CASCADE)
       await FinanceiroService.deleteRecebivelSemData(id)
       setRecebiveis((prev) => prev.filter((x) => x.id !== id))
       toast({ title: 'Recebível excluído' })
@@ -276,15 +367,61 @@ export function RecebiveisSemData({
   // mostram todas as empresas — o badge de empresa por item identifica a origem.
   const passaFiltroFinanceiro = (financeiroId: string) =>
     !financeiroPadraoId || financeiroPadraoId === 'todos' || financeiroId === financeiroPadraoId
+  // Filtros de estado local (texto, valor, período) aplicados ao financeiro do Passo 1
+  const passaFiltrosLocais = (r: RecebivelSemData) => {
+    if (filtroTexto) {
+      const t = removerAcentos(filtroTexto.toLowerCase())
+      const alvo = removerAcentos(
+        `${r.descricao} ${r.observacao || ''} ${r.contratante || ''}`.toLowerCase(),
+      )
+      if (!alvo.includes(t)) return false
+    }
+    const valor = Number(r.valor_total)
+    if (filtroValorMin && !isNaN(Number(filtroValorMin)) && valor < Number(filtroValorMin))
+      return false
+    if (filtroValorMax && !isNaN(Number(filtroValorMax)) && valor > Number(filtroValorMax))
+      return false
+    if (filtroDataDe && (!r.data_prevista || r.data_prevista < filtroDataDe)) return false
+    if (filtroDataAte && (!r.data_prevista || r.data_prevista > filtroDataAte)) return false
+    return true
+  }
   const recebiveisPendentes = useMemo(
     () =>
-      recebiveis.filter((r) => r.status === 'pendente' && passaFiltroFinanceiro(r.financeiro_id)),
-    [recebiveis, financeiroPadraoId],
+      recebiveis.filter(
+        (r) =>
+          r.status === 'pendente' &&
+          passaFiltroFinanceiro(r.financeiro_id) &&
+          passaFiltrosLocais(r),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      recebiveis,
+      financeiroPadraoId,
+      filtroTexto,
+      filtroValorMin,
+      filtroValorMax,
+      filtroDataDe,
+      filtroDataAte,
+    ],
   )
   const recebiveisConvertidos = useMemo(
     () =>
-      recebiveis.filter((r) => r.status === 'convertido' && passaFiltroFinanceiro(r.financeiro_id)),
-    [recebiveis, financeiroPadraoId],
+      recebiveis.filter(
+        (r) =>
+          r.status === 'convertido' &&
+          passaFiltroFinanceiro(r.financeiro_id) &&
+          passaFiltrosLocais(r),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      recebiveis,
+      financeiroPadraoId,
+      filtroTexto,
+      filtroValorMin,
+      filtroValorMax,
+      filtroDataDe,
+      filtroDataAte,
+    ],
   )
   const totalPendente = recebiveisPendentes.reduce((acc, r) => acc + Number(r.valor_total), 0)
   const financeiroFiltro =
@@ -516,8 +653,29 @@ export function RecebiveisSemData({
                   </select>
                 </div>
                 <div className="space-y-1.5">
+                  <Label htmlFor="rec-meses" className="text-xs text-gray-300 font-semibold">
+                    Repetir mensalmente por (vezes)
+                  </Label>
+                  <Input
+                    id="rec-meses"
+                    name="recorrencia_meses"
+                    value={recorrenciaMeses}
+                    onChange={(e) => setRecorrenciaMeses(e.target.value)}
+                    inputMode="numeric"
+                    placeholder="Ex.: 12 — vazio = não repetir"
+                    className="bg-[#0B0F14] border-[#232B36] text-white"
+                  />
+                  {nRecorrencia >= 2 && dataPrevista && !isNaN(valorNum) && valorNum > 0 && (
+                    <p className="text-[11px] text-gray-500">
+                      {nRecorrencia} ocorrências mensais de {formatCurrency(valorNum)} — a 1ª em{' '}
+                      {formatDateBR(dataPrevista)}, as seguintes +1 mês. Cada uma alimenta os
+                      Alertas de vencimento e é recebida separadamente.
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
                   <Label htmlFor="rec-prevista" className="text-xs text-gray-300 font-semibold">
-                    Data prevista de recebimento (opcional)
+                    Data prevista da 1ª ocorrência (opcional)
                   </Label>
                   <Input
                     id="rec-prevista"
@@ -590,6 +748,91 @@ export function RecebiveisSemData({
             )}
           </span>
         </CardHeader>
+        {/* FILTROS — texto, faixa de valor e período; total do card acompanha */}
+        <div className="px-6 pt-4 pb-2 border-b border-[#232B36]/60">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="col-span-2 space-y-1">
+              <Label htmlFor="filtro-rec-texto" className="text-[11px] text-gray-400 font-semibold">
+                Buscar (descrição, observação, contratante)
+              </Label>
+              <Input
+                id="filtro-rec-texto"
+                value={filtroTexto}
+                onChange={(e) => setFiltroTexto(e.target.value)}
+                placeholder="Ex.: contrato, prefeitura…"
+                className="h-9 bg-[#0B0F14] border-[#232B36] text-white"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="filtro-rec-vmin" className="text-[11px] text-gray-400 font-semibold">
+                Valor mínimo (R$)
+              </Label>
+              <Input
+                id="filtro-rec-vmin"
+                value={filtroValorMin}
+                onChange={(e) => setFiltroValorMin(e.target.value)}
+                inputMode="decimal"
+                placeholder="0,00"
+                className="h-9 bg-[#0B0F14] border-[#232B36] text-white"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="filtro-rec-vmax" className="text-[11px] text-gray-400 font-semibold">
+                Valor máximo (R$)
+              </Label>
+              <Input
+                id="filtro-rec-vmax"
+                value={filtroValorMax}
+                onChange={(e) => setFiltroValorMax(e.target.value)}
+                inputMode="decimal"
+                placeholder="∞"
+                className="h-9 bg-[#0B0F14] border-[#232B36] text-white"
+                autoComplete="off"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="filtro-rec-de" className="text-[11px] text-gray-400 font-semibold">
+                Previsto de
+              </Label>
+              <Input
+                id="filtro-rec-de"
+                type="date"
+                value={filtroDataDe}
+                onChange={(e) => setFiltroDataDe(e.target.value)}
+                className="h-9 bg-[#0B0F14] border-[#232B36] text-white [color-scheme:dark]"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="filtro-rec-ate" className="text-[11px] text-gray-400 font-semibold">
+                Previsto até
+              </Label>
+              <Input
+                id="filtro-rec-ate"
+                type="date"
+                value={filtroDataAte}
+                onChange={(e) => setFiltroDataAte(e.target.value)}
+                className="h-9 bg-[#0B0F14] border-[#232B36] text-white [color-scheme:dark]"
+              />
+            </div>
+          </div>
+          {(filtroTexto || filtroValorMin || filtroValorMax || filtroDataDe || filtroDataAte) && (
+            <button
+              type="button"
+              onClick={() => {
+                setFiltroTexto('')
+                setFiltroValorMin('')
+                setFiltroValorMax('')
+                setFiltroDataDe('')
+                setFiltroDataAte('')
+              }}
+              className="mt-2 text-[11px] text-amber-400 hover:text-amber-300 underline cursor-pointer"
+            >
+              Limpar filtros
+            </button>
+          )}
+        </div>
         <CardContent className="p-0">
           {loading ? (
             <div className="p-8 text-center text-xs text-gray-500 flex items-center justify-center gap-2">
@@ -646,6 +889,17 @@ export function RecebiveisSemData({
                           <>
                             <span aria-hidden="true">•</span>
                             <span>{r.total_parcelas}x</span>
+                          </>
+                        ) : null}
+                        {r.recorrencia_meses && r.recorrencia_meses >= 2 ? (
+                          <>
+                            <span aria-hidden="true">•</span>
+                            <Badge
+                              variant="outline"
+                              className="text-[9px] py-0 px-1 font-mono border-amber-400/60 text-amber-400"
+                            >
+                              {r.recorrencia_meses} ocorrências mensais
+                            </Badge>
                           </>
                         ) : null}
                       </div>

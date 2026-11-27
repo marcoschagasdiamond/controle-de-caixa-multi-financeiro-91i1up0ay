@@ -169,9 +169,27 @@ export interface Budget {
   updated_at?: string
 }
 
+// Ocorrência mensal de um recebível com recorrência (recebivel_pai_id).
+// Cada ocorrência tem sua própria data prevista e alimenta os Alertas de
+// vencimento; receber/converter marca só ela (não apaga as futuras).
+export interface RecebivelOcorrencia {
+  id: string
+  user_id: string
+  recebivel_pai_id: string
+  financeiro_id: string
+  numero: number // 1 = 1ª ocorrência, 2..N = seguintes (+1 mês)
+  data_prevista?: string | null
+  status: 'pendente' | 'convertido'
+  lancamento_id?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
 // Recebível sem data definida (contrato a receber): recebível real cuja data
 // depende de gatilho externo (despacho, término do contrato). NÃO entra na
 // projeção de caixa; quando a data sai, é convertido em lançamento previsto.
+// Com recorrência mensal (recorrencia_meses > 0), a 1ª ocorrência é o próprio
+// registro e as seguintes vivem em recebiveis_ocorrencias.
 export interface RecebivelSemData {
   id: string
   user_id: string
@@ -188,6 +206,8 @@ export interface RecebivelSemData {
   plano_conta_id?: string | null
   status: 'pendente' | 'convertido'
   lancamento_id?: string | null
+  // Recorrência mensal: nº de ocorrências desejado (1ª = o próprio registro)
+  recorrencia_meses?: number | null
   created_at?: string
   updated_at?: string
 }

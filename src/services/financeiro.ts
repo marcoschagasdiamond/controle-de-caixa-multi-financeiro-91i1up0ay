@@ -14,6 +14,7 @@ import {
   FechamentoFinanceiroView,
   LancamentoRecorrente,
   RecebivelSemData,
+  RecebivelOcorrencia,
 } from '@/types/financeiro'
 
 // Total lançado (somente realizados) por categoria do plano de contas
@@ -681,6 +682,54 @@ export const FinanceiroService = {
 
   async deleteRecebivelSemData(id: string): Promise<void> {
     const { error } = await (supabase.from('recebiveis_sem_data') as any).delete().eq('id', id)
+    if (error) throw error
+  },
+
+  // ===== OCORRÊNCIAS de recebível com recorrência mensal =====
+
+  async getRecebivelOcorrencias(recebivelPaiId?: string): Promise<RecebivelOcorrencia[]> {
+    let query = (supabase.from('recebiveis_ocorrencias') as any)
+      .select('*')
+      .order('data_prevista', { ascending: true })
+    if (recebivelPaiId) query = query.eq('recebivel_pai_id', recebivelPaiId)
+    const { data, error } = await query
+    if (error) throw error
+    return (data as RecebivelOcorrencia[]) || []
+  },
+
+  async createRecebivelOcorrencias(
+    linhas: Array<Omit<RecebivelOcorrencia, 'id' | 'user_id' | 'created_at' | 'updated_at'>>,
+  ): Promise<RecebivelOcorrencia[]> {
+    if (linhas.length === 0) return []
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) throw new Error('Usuário não autenticado')
+    const { data, error } = await (supabase.from('recebiveis_ocorrencias') as any)
+      .insert(linhas.map((l) => ({ ...l, user_id: user.id })))
+      .select()
+    if (error) throw error
+    return (data as RecebivelOcorrencia[]) || []
+  },
+
+  async updateRecebivelOcorrencia(
+    id: string,
+    payload: Partial<Omit<RecebivelOcorrencia, 'id' | 'user_id' | 'created_at' | 'updated_at'>>,
+  ): Promise<void> {
+    const { error } = await (supabase.from('recebiveis_ocorrencias') as any)
+      .update(payload)
+      .eq('id', id)
+    if (error) throw error
+  },
+
+  async deleteRecebivelOcorrenciasFuturas(
+    recebivelPaiId: string,
+    numeroAPartirDe: number,
+  ): Promise<void> {
+    const { error } = await (supabase.from('recebiveis_ocorrencias') as any)
+      .delete()
+      .eq('recebivel_pai_id', recebivelPaiId)
+      .gte('numero', numeroAPartirDe)
     if (error) throw error
   },
 }

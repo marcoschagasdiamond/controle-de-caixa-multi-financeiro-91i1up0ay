@@ -116,7 +116,9 @@ export function DialogoConverterRecebivel({ recebivel, planos, onClose, onConver
         })
       }
 
-      // Marca como convertido, mantendo histórico/vínculo (não apaga)
+      // Marca como convertido, mantendo histórico/vínculo (não apaga).
+      // COM RECORRÊNCIA: as ocorrências seguintes (2..N) permanecem pendentes —
+      // cada uma alimenta os Alertas e é recebida separadamente.
       await FinanceiroService.updateRecebivelSemData(r.id, {
         status: 'convertido',
         lancamento_id: lanc.id,
