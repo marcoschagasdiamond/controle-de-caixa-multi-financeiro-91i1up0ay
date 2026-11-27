@@ -369,6 +369,16 @@ export default function LancamentosPage() {
     navigate(location.pathname, { replace: true, state: null })
   }, [location.state, lancamentos, loading])
 
+  // Vindo do card de Alertas de vencimento (Painel): clique num RECEBÍVEL com
+  // data prevista guarda o id; o componente RecebiveisSemData abre em edição.
+  const [recebivelIdParaEditar, setRecebivelIdParaEditar] = useState<string | null>(null)
+  useEffect(() => {
+    const idAlvo = (location.state as { editarRecebivelId?: string } | null)?.editarRecebivelId
+    if (!idAlvo) return
+    setRecebivelIdParaEditar(idAlvo)
+    navigate(location.pathname, { replace: true, state: null })
+  }, [location.state, navigate])
+
   // Cancela a edição e volta ao modo de criação
   const cancelarEdicao = () => {
     setEditandoId(null)
@@ -1809,11 +1819,13 @@ export default function LancamentosPage() {
         onExcluir={(r) => setRecorrenteParaExcluir(r)}
       />
 
-      {/* RECEBÍVEIS SEM DATA: contratos a receber sem data definida, fora da projeção */}
+      {/* RECEBÍVEIS SEM DATA: contratos a receber sem data definida, fora da projeção.
+          editarRecebivelId: vem do card Alertas de vencimento do Painel (clique no item). */}
       <RecebiveisSemData
         financeiros={financeiros}
         planos={planos}
         financeiroPadraoId={selectedFinId || undefined}
+        editarRecebivelId={recebivelIdParaEditar}
       />
 
       {/* Confirmação de exclusão de recorrente (Projeção Anual) */}

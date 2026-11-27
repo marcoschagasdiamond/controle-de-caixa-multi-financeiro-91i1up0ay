@@ -183,6 +183,8 @@ export interface RecebivelSemData {
   status_gatilho: 'aguardando_despacho' | 'aguardando_termino' | 'outro'
   gatilho_outro?: string | null
   observacao?: string | null
+  // Data prevista de recebimento (opcional): alimenta os Alertas de vencimento
+  data_prevista?: string | null
   plano_conta_id?: string | null
   status: 'pendente' | 'convertido'
   lancamento_id?: string | null

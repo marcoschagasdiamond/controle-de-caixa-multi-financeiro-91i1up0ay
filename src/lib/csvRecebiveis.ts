@@ -1,14 +1,26 @@
-/**
- * Parser e normalização de CSV de RECEBÍVEIS SEM DATA (contratos a receber).
- * Reutiliza o parser genérico de planilhas (sheetParser) e adiciona:
- * - detecção automática de mapeamento pelo nome do cabeçalho (pt-BR);
- * - parse de valores "R$ 1.234,56";
- * - normalização de gatilhos e casamento de categorias/financeiros.
- */
-import { parseCSV, normalizeCurrency } from '@/lib/sheetParser'
-import { Financeiro, PlanoConta, RecebivelSemData } from '@/types/financeiro'
+// Recebíveis sem data: IMPORTAÇÃO de CSV (diálogo em 4 passos) e EXPORTAÇÃO CSV.
+// Importação: mapeamento por cabeçalho, prévia com dedupe e gravação via serviço.
+// Exportação: padrão brasileiro (separador ";", vírgula decimal, BOM para Excel).
+import { RecebivelSemData, Financeiro, PlanoConta } from '@/types/financeiro'
+import { parseCSV } from '@/lib/sheetParser'
+import { formatDateBR } from '@/lib/formatters'
+import { labelGatilho } from '@/components/RecebiveisSemData'
+import { valorCSV } from '@/lib/csv'
 
-export const CAMPOS_RECEBIVEL = [
+// ---------- Campos / rótulos ----------
+
+export type CampoRecebivel =
+  | 'descricao'
+  | 'valor'
+  | 'contratante'
+  | 'gatilho'
+  | 'parcelas'
+  | 'categoria'
+  | 'observacao'
+  | 'financeiro'
+  | 'data_prevista'
+
+export const CAMPOS_RECEBIVEL: CampoRecebivel[] = [
   'descricao',
   'valor',
   'contratante',
@@ -17,139 +29,142 @@ export const CAMPOS_RECEBIVEL = [
   'categoria',
   'observacao',
   'financeiro',
-] as const
-
-export type CampoRecebivel = (typeof CAMPOS_RECEBIVEL)[number]
+  'data_prevista',
+]
 
 export const LABEL_CAMPO: Record<CampoRecebivel, string> = {
-  descricao: 'Descrição *',
-  valor: 'Valor total (R$) *',
+  descricao: 'Descrição',
+  valor: 'Valor (R$)',
   contratante: 'Contratante',
-  gatilho: 'Gatilho',
+  gatilho: 'Status do gatilho',
   parcelas: 'Nº de parcelas',
-  categoria: 'Categoria',
+  categoria: 'Categoria (plano de contas)',
   observacao: 'Observação',
-  financeiro: 'Financeiro',
+  financeiro: 'Financeiro (empresa)',
+  data_prevista: 'Data prevista de recebimento',
 }
 
-// Termos que identificam cada campo pelo cabeçalho (avaliados na ordem)
-const TERMOS_CAMPO: Record<CampoRecebivel, string[]> = {
-  descricao: [
-    'descricao',
-    'descrição',
-    'descript',
-    'contrato',
-    'histórico',
-    'historico',
-    'recebível',
-    'recebivel',
-  ],
-  valor: ['valor', 'total', 'montante', 'amount'],
-  contratante: ['contratante', 'cliente', 'tomador', 'pagador', 'empresa'],
-  gatilho: ['gatilho', 'status', 'situação', 'situacao', 'condição', 'condicao'],
-  parcelas: ['parcela', 'parcelas', 'nº parcelas', 'qtd'],
-  categoria: ['categoria', 'plano', 'rubrica', 'conta contábil', 'conta contabil'],
-  observacao: ['observação', 'observacao', 'obs', 'detalhe', 'anotação', 'anotacao'],
-  financeiro: ['financeiro', 'empresa destino', 'entidade', 'cpf/cnpj', 'unidade'],
-}
-
-// Ordem importa: parcelas antes de valor (para não casar "parcelas" em "valor"); etc.
-const ORDEM_DETECCAO: CampoRecebivel[] = [
-  'contratante',
-  'parcelas',
-  'categoria',
-  'observacao',
-  'gatilho',
-  'financeiro',
-  'descricao',
-  'valor',
-]
+// ---------- Normalização ----------
 
 export const removerAcentos = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 
-/** Sugere mapeamento campo → nome da coluna do arquivo (ou '' se não achou) */
-export function sugerirMapeamento(headers: string[]): Record<CampoRecebivel, string> {
-  const map = {} as Record<CampoRecebivel, string>
-  const usadas = new Set<string>()
-  for (const campo of ORDEM_DETECCAO) {
-    const termos = TERMOS_CAMPO[campo]
-    const header = headers.find((h) => {
-      if (usadas.has(h)) return false
-      const n = removerAcentos(h.toLowerCase().trim())
-      return termos.some((t) => n.includes(removerAcentos(t)))
-    })
-    if (header) {
-      map[campo] = header
-      usadas.add(header)
-    } else {
-      map[campo] = ''
+const chave = (s: string) =>
+  removerAcentos(String(s || ''))
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '')
+
+const normalizarValor = (texto: string): number | null => {
+  let t = String(texto || '').trim()
+  if (!t) return null
+  t = t.replace(/[R$\s]/gi, '')
+  // "1.234,56" pt-BR ou "1234.56" en-US
+  if (/,\d{2}$/.test(t)) t = t.replace(/\./g, '').replace(',', '.')
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '')
+  const n = parseFloat(t)
+  return isNaN(n) ? null : n
+}
+
+export const normalizarGatilho = (texto: string): RecebivelSemData['status_gatilho'] => {
+  const c = chave(texto)
+  if (c.includes('termino') || c.includes('contrato')) return 'aguardando_termino'
+  if (c.includes('outro') || c.includes('outros')) return 'outro'
+  return 'aguardando_despacho'
+}
+
+export const normalizarParcelas = (texto: string): number | null => {
+  const t = String(texto || '').trim()
+  if (!t) return null
+  const m = t.match(/\d+/)
+  if (!m) return null
+  const n = parseInt(m[0], 10)
+  return n >= 2 ? n : null
+}
+
+const MESES: Record<string, number> = {
+  jan: 1,
+  fev: 2,
+  mar: 3,
+  abr: 4,
+  mai: 5,
+  jun: 6,
+  jul: 7,
+  ago: 8,
+  set: 9,
+  out: 10,
+  nov: 11,
+  dez: 12,
+}
+
+// Aceita dd/mm/aaaa, aaaa-mm-dd e "12 mar 2026"; devolve ISO (yyyy-mm-dd) ou null.
+const normalizarData = (texto: string): string | null => {
+  const t = String(texto || '').trim()
+  if (!t) return null
+  let m = t.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/)
+  if (m) {
+    const dia = parseInt(m[1], 10)
+    const mes = parseInt(m[2], 10)
+    let ano = parseInt(m[3], 10)
+    if (ano < 100) ano += 2000
+    if (mes >= 1 && mes <= 12 && dia >= 1 && dia <= 31)
+      return `${ano}-${String(mes).padStart(2, '0')}-${String(dia).padStart(2, '0')}`
+    return null
+  }
+  m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (m) return `${m[1]}-${String(m[2]).padStart(2, '0')}-${String(m[3]).padStart(2, '0')}`
+  m = t.match(/^(\d{1,2})\s*([a-zA-Z]{3})\w*\s*(\d{2,4})$/)
+  if (m) {
+    const mes = MESES[m[2].toLowerCase()]
+    if (mes) {
+      let ano = parseInt(m[3], 10)
+      if (ano < 100) ano += 2000
+      return `${ano}-${String(mes).padStart(2, '0')}-${String(m[1]).padStart(2, '0')}`
     }
   }
-  return map
+  return null
 }
 
-/** Normaliza o texto do gatilho para o enum existente */
-export function normalizarGatilho(texto: string): {
-  status_gatilho: RecebivelSemData['status_gatilho']
-  gatilho_outro: string | null
-} {
-  const n = removerAcentos(texto.toLowerCase().trim())
-  if (!n) return { status_gatilho: 'aguardando_despacho', gatilho_outro: null }
-  if (n.includes('despacho')) return { status_gatilho: 'aguardando_despacho', gatilho_outro: null }
-  if (
-    n.includes('término') ||
-    n.includes('termino') ||
-    n.includes('conclus') ||
-    n.includes('entrega')
-  )
-    return { status_gatilho: 'aguardando_termino', gatilho_outro: null }
-  return { status_gatilho: 'outro', gatilho_outro: texto.trim() }
-}
-
-/** Parse de número de parcelas: vazio = null; inválido = -1 (erro) */
-export function normalizarParcelas(texto: string): number | null {
-  const n = texto.trim()
-  if (!n) return null
-  const num = parseInt(n.replace(/[^\d]/g, ''), 10)
-  if (isNaN(num) || num < 1) return -1
-  return num
-}
-
-/** Casamento de categoria por código (exato) ou descrição (contém) — plano GLOBAL */
-export function casarCategoria(texto: string, planos: PlanoConta[]): PlanoConta | null {
-  const t = removerAcentos(texto.toLowerCase().trim())
+export const casarCategoria = (texto: string, planos: PlanoConta[]): string | null => {
+  const t = String(texto || '').trim()
   if (!t) return null
-  const receitas = planos.filter((p) => p.tipo === 'receita')
-  const porCodigo = receitas.find((p) => p.codigo && removerAcentos(p.codigo.toLowerCase()) === t)
-  if (porCodigo) return porCodigo
-  const porDescricaoExata = receitas.find((p) => removerAcentos(p.descricao.toLowerCase()) === t)
-  if (porDescricaoExata) return porDescricaoExata
-  const porContem = receitas.find((p) => removerAcentos(p.descricao.toLowerCase()).includes(t))
-  return porContem ?? null
+  const c = chave(t)
+  const porCodigo = planos.find((p) => p.codigo && chave(p.codigo) === c)
+  if (porCodigo) return porCodigo.id
+  const porDescricao = planos.find((p) => chave(p.descricao) === c)
+  if (porDescricao) return porDescricao.id
+  const porPrefixo = planos.find(
+    (p) =>
+      c.length >= 4 &&
+      (chave(p.descricao).startsWith(c) || chave(p.descricao + p.codigo).startsWith(c)),
+  )
+  return porPrefixo?.id || null
 }
 
-/** Casamento de financeiro por nome (contém, acentos ignorados) */
-export function casarFinanceiro(nome: string, financeiros: Financeiro[]): Financeiro | null {
-  const n = removerAcentos(nome.toLowerCase().trim())
-  if (!n) return null
+export const casarFinanceiro = (texto: string, financeiros: Financeiro[]): string | null => {
+  const t = String(texto || '').trim()
+  if (!t) return null
+  const c = chave(t)
   return (
-    financeiros.find((f) => removerAcentos(f.nome.toLowerCase()) === n) ??
-    financeiros.find((f) => removerAcentos(f.nome.toLowerCase()).includes(n)) ??
+    financeiros.find((f) => chave(f.nome) === c)?.id ||
+    financeiros.find((f) => chave(f.nome).includes(c) && c.length >= 4)?.id ||
+    financeiros.find((f) => c.includes(chave(f.nome)) && chave(f.nome).length >= 4)?.id ||
     null
   )
 }
 
+// ---------- Tipos de linha ----------
+
 export interface LinhaImportada {
-  linha: number // 1-based, só dados
+  linha: number // nº da linha no arquivo (1-based, sem cabeçalho)
   descricao: string
   valor: number
+  total_parcelas: number | null
   contratante: string | null
   status_gatilho: RecebivelSemData['status_gatilho']
   gatilho_outro: string | null
-  total_parcelas: number | null
-  plano_conta_id: string | null
   observacao: string | null
+  data_prevista: string | null
   financeiro_id: string | null
+  plano_conta_id: string | null
 }
 
 export interface ResultadoParse {
@@ -157,122 +172,203 @@ export interface ResultadoParse {
   erros: Array<{ linha: number; motivo: string }>
 }
 
-/** Converte as linhas cruas do CSV em recebíveis, usando o mapeamento do usuário */
-export function transformarLinhas(
+// ---------- Mapeamento ----------
+
+export const sugerirMapeamento = (headers: string[]): Record<CampoRecebivel, string> => {
+  const map = Object.fromEntries(CAMPOS_RECEBIVEL.map((c) => [c, ''])) as Record<
+    CampoRecebivel,
+    string
+  >
+  for (const h of headers) {
+    const c = chave(h)
+    if (!map.descricao && (c.includes('descric') || c === 'contrato' || c === 'item'))
+      map.descricao = h
+    else if (!map.valor && (c.includes('valor') || c === 'total')) map.valor = h
+    else if (
+      !map.contratante &&
+      (c.includes('contrat') || c.includes('cliente') || c.includes('fornecedor'))
+    )
+      map.contratante = h
+    else if (!map.gatilho && (c.includes('gatilho') || c.includes('status'))) map.gatilho = h
+    else if (!map.parcelas && (c.includes('parcela') || c === 'nparcelas')) map.parcelas = h
+    else if (
+      !map.categoria &&
+      (c.includes('categor') || c.includes('plano') || c.includes('conta'))
+    )
+      map.categoria = h
+    else if (!map.observacao && (c.includes('observ') || c.includes('nota'))) map.observacao = h
+    else if (!map.financeiro && (c.includes('financeiro') || c.includes('empresa')))
+      map.financeiro = h
+    else if (
+      !map.data_prevista &&
+      (c.includes('prevista') || c.includes('previsao') || c.includes('data'))
+    )
+      map.data_prevista = h
+  }
+  return map
+}
+
+// ---------- Transformação ----------
+
+export const transformarLinhas = (
   rows: string[][],
   headers: string[],
   map: Record<CampoRecebivel, string>,
   financeiros: Financeiro[],
   planos: PlanoConta[],
-): ResultadoParse {
-  const idx: Partial<Record<CampoRecebivel, number>> = {}
-  for (const campo of CAMPOS_RECEBIVEL) {
-    if (map[campo]) idx[campo] = headers.indexOf(map[campo])
+): ResultadoParse => {
+  const col = (campo: CampoRecebivel) => {
+    const h = map[campo]
+    return h ? headers.indexOf(h) : -1
   }
+  const idx = Object.fromEntries(CAMPOS_RECEBIVEL.map((c) => [c, col(c)])) as Record<
+    CampoRecebivel,
+    number
+  >
 
   const linhas: LinhaImportada[] = []
   const erros: Array<{ linha: number; motivo: string }> = []
 
-  rows.forEach((cells, i) => {
-    const numLinha = i + 1
-    const get = (c: CampoRecebivel) => {
-      const j = idx[c]
-      return j !== undefined && j >= 0 ? (cells[j] ?? '').trim() : ''
-    }
+  rows.forEach((row, i) => {
+    const nLinha = i + 2 // +2: cabeçalho é a linha 1
+    if (row.every((c) => !String(c || '').trim())) return // linha vazia
 
-    const descricao = get('descricao')
-    const valorTexto = get('valor')
-    const valor = valorTexto ? normalizeCurrency(valorTexto) : 0
+    const descricao = idx.descricao >= 0 ? String(row[idx.descricao] || '').trim() : ''
+    const valorBruto = idx.valor >= 0 ? String(row[idx.valor] || '') : ''
+    const valor = normalizarValor(valorBruto)
 
     if (!descricao) {
-      erros.push({ linha: numLinha, motivo: 'Descrição vazia' })
+      erros.push({ linha: nLinha, motivo: 'Descrição vazia' })
       return
     }
-    if (!valor || valor <= 0) {
-      erros.push({ linha: numLinha, motivo: `Valor inválido ("${valorTexto}")` })
+    if (valor === null || valor <= 0) {
+      erros.push({ linha: nLinha, motivo: `Valor inválido: "${valorBruto}"` })
       return
     }
 
-    const gatilho = normalizarGatilho(get('gatilho'))
-    let parcelas: number | null = null
-    const parcelasTexto = get('parcelas')
-    if (parcelasTexto) {
-      parcelas = normalizarParcelas(parcelasTexto)
-      if (parcelas === -1) {
-        erros.push({ linha: numLinha, motivo: `Nº de parcelas inválido ("${parcelasTexto}")` })
-        return
-      }
-      if (parcelas !== null && parcelas < 2) parcelas = null // 1 = pagamento único
-    }
-
-    const finTexto = get('financeiro')
-    let financeiro_id: string | null = null
-    if (finTexto) {
-      const fin = casarFinanceiro(finTexto, financeiros)
-      if (!fin) {
-        erros.push({ linha: numLinha, motivo: `Financeiro não encontrado: "${finTexto}"` })
-        return
-      }
-      financeiro_id = fin.id
-    }
-
-    const catTexto = get('categoria')
-    const plano = catTexto ? casarCategoria(catTexto, planos) : null
-    const categoriaNome = get('categoria')
+    const gatilhoBruto = idx.gatilho >= 0 ? String(row[idx.gatilho] || '').trim() : ''
+    const statusGatilho = gatilhoBruto ? normalizarGatilho(gatilhoBruto) : 'aguardando_despacho'
 
     linhas.push({
-      linha: numLinha,
+      linha: nLinha,
       descricao,
       valor,
-      contratante: get('contratante') || null,
-      status_gatilho: gatilho.status_gatilho,
-      gatilho_outro: gatilho.gatilho_outro,
-      total_parcelas: parcelas && parcelas > 1 ? parcelas : null,
-      plano_conta_id: plano?.id ?? null,
-      observacao: get('observacao') || null,
-      financeiro_id,
+      total_parcelas:
+        idx.parcelas >= 0 ? normalizarParcelas(String(row[idx.parcelas] || '')) : null,
+      contratante: idx.contratante >= 0 ? String(row[idx.contratante] || '').trim() || null : null,
+      status_gatilho: statusGatilho,
+      gatilho_outro: statusGatilho === 'outro' && gatilhoBruto ? gatilhoBruto : null,
+      observacao: idx.observacao >= 0 ? String(row[idx.observacao] || '').trim() || null : null,
+      data_prevista:
+        idx.data_prevista >= 0 ? normalizarData(String(row[idx.data_prevista] || '')) : null,
+      financeiro_id:
+        idx.financeiro >= 0
+          ? casarFinanceiro(String(row[idx.financeiro] || ''), financeiros)
+          : null,
+      plano_conta_id:
+        idx.categoria >= 0 ? casarCategoria(String(row[idx.categoria] || ''), planos) : null,
     })
-    void categoriaNome
   })
 
   return { linhas, erros }
 }
 
-/** Normaliza texto para comparação de duplicidade (minúsculas, sem espaços extras) */
-const chaveDuplicidade = (r: { descricao: string; valor: number; contratante?: string | null }) =>
-  `${removerAcentos(r.descricao.toLowerCase().trim())}|${r.valor.toFixed(2)}|${removerAcentos(
-    (r.contratante || '').toLowerCase().trim(),
-  )}`
+// ---------- Duplicidade ----------
 
-/**
- * Separa linhas em novas / duplicadas, considerando:
- * - os recebíveis já existentes no banco (pendentes);
- * - repetições dentro do próprio arquivo.
- */
-export function separarDuplicados(
+const chaveDuplicidade = (r: {
+  descricao: string
+  valor_total: number | string
+  contratante?: string | null
+}) => `${chave(r.descricao)}|${Number(r.valor_total).toFixed(2)}|${chave(r.contratante || '')}`
+
+// Pendentes existentes com mesma descrição + valor + contratante são duplicatas.
+export const separarDuplicados = (
   linhas: LinhaImportada[],
   existentes: RecebivelSemData[],
-): { novas: LinhaImportada[]; duplicadas: LinhaImportada[] } {
+): { novas: LinhaImportada[]; duplicadas: LinhaImportada[] } => {
   const chavesExistentes = new Set(
     existentes
       .filter((r) => r.status === 'pendente')
-      .map((r) =>
-        chaveDuplicidade({
-          descricao: r.descricao,
-          valor: Number(r.valor_total),
-          contratante: r.contratante,
-        }),
-      ),
+      .map((r) => chaveDuplicidade({ ...r, valor_total: Number(r.valor_total) })),
   )
   const novas: LinhaImportada[] = []
   const duplicadas: LinhaImportada[] = []
   for (const l of linhas) {
-    const chave = chaveDuplicidade(l)
-    if (chavesExistentes.has(chave) || novas.some((n) => chaveDuplicidade(n) === chave)) {
+    if (
+      chavesExistentes.has(
+        chaveDuplicidade({
+          descricao: l.descricao,
+          valor_total: l.valor,
+          contratante: l.contratante || undefined,
+        }),
+      )
+    )
       duplicadas.push(l)
-    } else {
-      novas.push(l)
-    }
+    else novas.push(l)
   }
   return { novas, duplicadas }
 }
+
+// ---------- Exportação ----------
+
+const cabecalhoExport = [
+  'Descrição',
+  'Empresa',
+  'Valor (R$)',
+  'Status',
+  'Data prevista',
+  'Observação',
+  'Data de conversão',
+]
+
+// Exporta pendentes + convertidos (na ordem recebida) com total pendente no rodapé.
+export const linhasRecebiveisCSV = (
+  recebiveis: RecebivelSemData[],
+  financeiros: Financeiro[],
+): string[][] => {
+  const linhas: string[][] = [cabecalhoExport]
+  let total = 0
+  for (const r of recebiveis) {
+    const fin = financeiros.find((f) => f.id === r.financeiro_id)
+    const valor = Number(r.valor_total) || 0
+    if (r.status === 'pendente') total += valor
+    linhas.push([
+      r.descricao,
+      fin?.nome || '',
+      valorCSV(valor),
+      r.status === 'convertido' ? 'Convertido' : labelGatilho(r),
+      r.data_prevista ? formatDateBR(r.data_prevista) : '',
+      r.observacao || '',
+      r.status === 'convertido' && r.updated_at
+        ? formatDateBR(String(r.updated_at).slice(0, 10))
+        : '',
+    ])
+  }
+  linhas.push([])
+  linhas.push(['Total pendente', '', valorCSV(total), '', '', '', ''])
+  return linhas
+}
+
+// Monta e baixa o CSV de recebíveis (pendentes + convertidos) com BOM para Excel.
+export const exportarRecebiveisCSV = (
+  recebiveis: RecebivelSemData[],
+  financeiros: Financeiro[],
+) => {
+  const linhas = linhasRecebiveisCSV(recebiveis, financeiros)
+  const conteudo =
+    '\uFEFF' +
+    linhas
+      .map((l) => l.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(';'))
+      .join('\r\n')
+  const blob = new Blob([conteudo], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `recebiveis-${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+export { parseCSV }

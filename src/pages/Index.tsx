@@ -790,9 +790,11 @@ export default function Index() {
         onAtualizado={carregarPainel}
       />
 
-      {/* ALERTAS DE VENCIMENTO: lançamentos previstos atrasados/vencendo e resolvidos em atraso */}
+      {/* ALERTAS DE VENCIMENTO: lançamentos previstos atrasados/vencendo e resolvidos em atraso,
+          mais recebíveis pendentes com data prevista (mesmas faixas, clique abre a edição) */}
       <AlertasVencimento
         lancamentos={lancamentos}
+        recebiveisPendentes={recebiveis.filter((r) => r.status === 'pendente')}
         financeiros={finsAcesso}
         financeiroIdSelecionado={selectedFinId}
       />

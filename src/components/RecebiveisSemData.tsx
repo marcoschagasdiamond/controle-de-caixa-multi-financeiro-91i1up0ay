@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useToast } from '@/hooks/use-toast'
 import { FinanceiroService } from '@/services/financeiro'
 import { Financeiro, PlanoConta, RecebivelSemData } from '@/types/financeiro'
-import { formatCurrency } from '@/lib/formatters'
+import { formatCurrency, formatDateBR, getTodayISODate } from '@/lib/formatters'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { DialogoConverterRecebivel } from '@/components/DialogoConverterRecebivel'
 import { DialogoImportarRecebiveis } from '@/components/DialogoImportarRecebiveis'
+import { exportarRecebiveisCSV } from '@/lib/csvRecebiveis'
 import {
   Inbox,
   PlusCircle,
@@ -24,6 +25,7 @@ import {
   MoreHorizontal,
   Loader2,
   FileSpreadsheet,
+  Download,
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react'
@@ -54,11 +56,19 @@ interface Props {
   planos: PlanoConta[]
   // Financeiro padrão para linhas sem coluna de financeiro (filtro da tela)
   financeiroPadraoId?: string
+  // Id do recebível a abrir em edição (clique num item do card Alertas de vencimento)
+  editarRecebivelId?: string | null
 }
 
 // Seção "Recebíveis sem Data (Contratos a Receber)" dentro de Lançamentos.
-// Cadastro sem data; os recebíveis pendentes NÃO entram na projeção de caixa.
-export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: Props) {
+// Cadastro opcionalmente com data prevista (alimenta os Alertas de vencimento
+// do Painel enquanto pendente) e observação; fica fora da projeção de caixa.
+export function RecebiveisSemData({
+  financeiros,
+  planos,
+  financeiroPadraoId,
+  editarRecebivelId,
+}: Props) {
   const { toast } = useToast()
 
   const [recebiveis, setRecebiveis] = useState<RecebivelSemData[]>([])
@@ -66,7 +76,7 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  // Formulário de cadastro — SEM data em nenhum campo
+  // Formulário de cadastro
   const [descricao, setDescricao] = useState('')
   const [valorTotal, setValorTotal] = useState('')
   const [numParcelas, setNumParcelas] = useState('')
@@ -76,6 +86,7 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
     useState<RecebivelSemData['status_gatilho']>('aguardando_despacho')
   const [gatilhoOutro, setGatilhoOutro] = useState('')
   const [observacao, setObservacao] = useState('')
+  const [dataPrevista, setDataPrevista] = useState('')
   const [selectedPlanoId, setSelectedPlanoId] = useState('')
   // Modo edição: id do recebível sendo editado (lápis no card de Pendentes)
   const [editandoId, setEditandoId] = useState<string | null>(null)
@@ -111,6 +122,19 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Vindo do card Alertas de vencimento do Painel: abre o recebível em edição
+  // quando a lista já tiver carregado (e uma única vez por id recebido).
+  const editadoViaAlerta = useRef<string | null>(null)
+  useEffect(() => {
+    if (!editarRecebivelId || loading) return
+    if (editadoViaAlerta.current === editarRecebivelId) return
+    const alvo = recebiveis.find((r) => r.id === editarRecebivelId)
+    if (!alvo) return
+    editadoViaAlerta.current = editarRecebivelId
+    iniciarEdicao(alvo)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editarRecebivelId, recebiveis, loading])
+
   const valorNum = parseFloat(valorTotal.replace(',', '.'))
   const nParcelasCadastro = numParcelas ? parseInt(numParcelas, 10) : 0
   const valorParcelaCadastro =
@@ -122,6 +146,7 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
     setNumParcelas('')
     setContratante('')
     setObservacao('')
+    setDataPrevista('')
     setGatilhoOutro('')
     setStatusGatilho('aguardando_despacho')
     setSelectedPlanoId('')
@@ -139,6 +164,7 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
     setStatusGatilho(r.status_gatilho)
     setGatilhoOutro(r.gatilho_outro || '')
     setObservacao(r.observacao || '')
+    setDataPrevista(r.data_prevista || '')
     setSelectedPlanoId(r.plano_conta_id || '')
     setFormError(null)
     // O contêiner de rolagem é o <main> do Layout: scrollIntoView rola os
@@ -188,6 +214,7 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
         await FinanceiroService.updateRecebivelSemData(editandoId, {
           financeiro_id: selectedFinId,
           descricao: descricao.trim(),
+          data_prevista: dataPrevista || null,
           valor_total: v,
           total_parcelas: nParcelasCadastro > 1 ? nParcelasCadastro : null,
           contratante: contratante.trim() || null,
@@ -207,6 +234,7 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
       await FinanceiroService.createRecebivelSemData({
         financeiro_id: selectedFinId,
         descricao: descricao.trim(),
+        data_prevista: dataPrevista || null,
         valor_total: v,
         total_parcelas: nParcelasCadastro > 1 ? nParcelasCadastro : null,
         contratante: contratante.trim() || null,
@@ -288,32 +316,51 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
                     }`
                   : 'Recebíveis sem Data (Contratos a Receber)'}
               </CardTitle>
-              <span className="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">
-                Fora da projeção de caixa
-              </span>
-              {editandoId ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={cancelarEdicao}
-                  className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
-                  Cancelar edição
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setImportOpen(true)}
-                  className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
-                  Importar CSV
-                </Button>
-              )}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] text-gray-500 uppercase tracking-wide font-semibold">
+                  Fora da projeção de caixa
+                </span>
+                {editandoId ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={cancelarEdicao}
+                    className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5 mr-1.5" aria-hidden="true" />
+                    Cancelar edição
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        exportarRecebiveisCSV(
+                          [...recebiveisPendentes, ...recebiveisConvertidos],
+                          financeiros,
+                        )
+                      }
+                      className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                      Exportar CSV
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setImportOpen(true)}
+                      className="border-[#232B36] text-gray-300 hover:text-white hover:bg-[#1E2633] cursor-pointer"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5 mr-2" aria-hidden="true" />
+                      Importar CSV
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           </CardHeader>
           <CardContent className="pt-6">
@@ -468,6 +515,22 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
                       ))}
                   </select>
                 </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="rec-prevista" className="text-xs text-gray-300 font-semibold">
+                    Data prevista de recebimento (opcional)
+                  </Label>
+                  <Input
+                    id="rec-prevista"
+                    name="data_prevista"
+                    type="date"
+                    value={dataPrevista}
+                    onChange={(e) => setDataPrevista(e.target.value)}
+                    className="bg-[#0B0F14] border-[#232B36] text-white [color-scheme:dark]"
+                  />
+                  <p className="text-[11px] text-gray-500">
+                    Informada: entra nos Alertas de vencimento do Painel.
+                  </p>
+                </div>
                 <div className="space-y-1.5 md:col-span-2">
                   <Label htmlFor="rec-obs" className="text-xs text-gray-300 font-semibold">
                     Observação
@@ -553,6 +616,14 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
                       </div>
                       <div className="text-[11px] text-gray-400 flex items-center gap-2 mt-0.5 flex-wrap">
                         <span>{labelGatilho(r)}</span>
+                        {r.data_prevista && (
+                          <>
+                            <span aria-hidden="true">•</span>
+                            <span className="text-gray-300">
+                              Previsto: {formatDateBR(r.data_prevista)}
+                            </span>
+                          </>
+                        )}
                         {r.contratante && (
                           <>
                             <span aria-hidden="true">•</span>
@@ -579,7 +650,10 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
                         ) : null}
                       </div>
                       {r.observacao && (
-                        <div className="text-[11px] text-gray-500 mt-1 max-w-xl truncate">
+                        <div
+                          className="text-[11px] text-gray-500 mt-1 max-w-xl truncate"
+                          title={r.observacao}
+                        >
                           {r.observacao}
                         </div>
                       )}
@@ -642,22 +716,38 @@ export function RecebiveisSemData({ financeiros, planos, financeiroPadraoId }: P
               {recebiveisConvertidos.map((r) => {
                 const fin = financeiros.find((f) => f.id === r.financeiro_id)
                 return (
-                  <div key={r.id} className="p-3 flex items-center justify-between gap-3 text-xs">
-                    <div className="min-w-0">
-                      <div className="font-semibold text-white">{r.descricao}</div>
-                      <div className="text-[11px] text-gray-400 flex items-center gap-2 mt-0.5">
-                        <span>{labelGatilho(r)}</span>
-                        {fin && (
-                          <>
-                            <span aria-hidden="true">•</span>
-                            <span>{fin.nome}</span>
-                          </>
-                        )}
+                  <div key={r.id} className="p-3 text-xs">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold text-white">{r.descricao}</div>
+                        <div className="text-[11px] text-gray-400 flex items-center gap-2 mt-0.5">
+                          <span>{labelGatilho(r)}</span>
+                          {r.data_prevista && (
+                            <>
+                              <span aria-hidden="true">•</span>
+                              <span>Previsto: {formatDateBR(r.data_prevista)}</span>
+                            </>
+                          )}
+                          {fin && (
+                            <>
+                              <span aria-hidden="true">•</span>
+                              <span>{fin.nome}</span>
+                            </>
+                          )}
+                        </div>
                       </div>
+                      <span className="font-mono font-bold text-gray-400 flex-shrink-0">
+                        {formatCurrency(Number(r.valor_total))}
+                      </span>
                     </div>
-                    <span className="font-mono font-bold text-gray-400 flex-shrink-0">
-                      {formatCurrency(Number(r.valor_total))}
-                    </span>
+                    {r.observacao && (
+                      <div
+                        className="text-[11px] text-gray-500 mt-1 max-w-xl truncate"
+                        title={r.observacao}
+                      >
+                        {r.observacao}
+                      </div>
+                    )}
                   </div>
                 )
               })}
